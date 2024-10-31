@@ -1,0 +1,5 @@
+comment = 'pgxcrypto_poc - A POC implementation based on OpenSSL for sha{256|521}crypt'
+default_version = '1.0'
+module_pathname = '$libdir/pgxcrypto_poc'
+relocatable = true
+requires = 'pgcrypto'
