@@ -652,7 +652,7 @@ pg_shacrypt(PG_FUNCTION_ARGS)
 
 			break;
 		}
-		
+
 		default:
 			goto error;
 	}
@@ -668,5 +668,5 @@ error:
 	EVP_MD_CTX_free(digestA);
 	EVP_MD_CTX_free(digestB);
 	elog(ERROR, "cannot create encrypted password");
-	
+
 }
