@@ -1,0 +1,8 @@
+#ifndef PGXCRYPTO_POC_PGXCRYPT_YESCRYPT_H
+#define PGXCRYPTO_POC_PGXCRYPT_YESCRYPT_H
+
+#include "postgres.h"
+#include "fmgr.h"
+
+#endif //PGXCRYPTO_POC_PGXCRYPT_YESCRYPT_H
+

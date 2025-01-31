@@ -1,4 +1,14 @@
-CREATE OR REPLACE FUNCTION pg_scrypt(text)
+CREATE OR REPLACE FUNCTION pg_scrypt_openssl(text, text)
 RETURNS text
-AS 'MODULE_PATHNAME', 'pg_scrypt'
+AS 'MODULE_PATHNAME', 'pg_scrypt_openssl'
 LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+
+CREATE OR REPLACE FUNCTION pg_scrypt_libscrypt(text, text)
+    RETURNS text
+AS 'MODULE_PATHNAME', 'pg_scrypt_libscrypt'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+
+CREATE OR REPLACE FUNCTION pgxcrypto_test_options(text[])
+    RETURNS void
+AS 'MODULE_PATHNAME', 'pgxcrypto_test_options'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;

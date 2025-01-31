@@ -1,6 +1,6 @@
 PG_CONFIG ?= pg_config
 MODULE_big = pgxcrypto_poc
-OBJS = pgxcrypto_poc.o $(WIN32RES)
+OBJS = pgxcrypto_scrypt.o pgxcrypto_poc.o $(WIN32RES)
 PGFILEDESC = "pgxcrypto_poc - A POC implementation based on OpenSSL for sha{256|521}crypt"
 
 EXTENSION = pgxcrypto_poc
