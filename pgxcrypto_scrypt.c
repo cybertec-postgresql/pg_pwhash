@@ -5,57 +5,266 @@
 
 #include "catalog/pg_type_d.h"
 #include "utils/builtins.h"
+#include "utils/array.h"
 #include "varatt.h"
 
 #include "libscrypt.h"
 
 PG_MODULE_MAGIC;
 
-struct pgxcrypto_option scrypt_options[] = {
+#define NUM_SCRYPT_OPTIONS 4
+#define SCRYPT_WORK_FACTOR_N 16
+#define SCRYPT_BLOCK_SIZE_r 8
+#define SCRYPT_PARALLEL_FACTOR_p 1
+#define SCRYPT_OUTPUT_VEC_LEN 64
+#define SCRYPT_SALT_MAX_LEN 64l
 
-		{ "rounds", INT4OID },
-		{ "block_size", INT4OID },
-		{ "parallelism", INT4OID }
+static const char *SCRYPT_MAGIC_BYTE = "$7$";
 
+enum scrypt_backend_types
+{
+  SCRYPT_BACKEND_LIBSCRYPT,
+  SCRYPT_BACKEND_OPENSSL,
 };
 
-text *
-_scrypt_libscrypt_internal(const char *pw,
-						   const char *salt,
-						   int rounds,
-						   int block_size,
-						   int parallelism)
-{
+typedef enum scrypt_backend_types scrypt_backend_type_t;
 
+struct pgxcrypto_option scrypt_options[] =
+{
+	{ "rounds", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
+	{ "block_size", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
+	{ "parallelism", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
+
+	/*
+	 * "backend" is not part of the scrypt specification but allows to identify
+	 * if "openssl" or "libscrypt" implementation should be used
+	 *
+	 * Iff password hashes generated with this option name, be aware that
+	 * they might be incompatible with other systems.
+	 */
+	{ "backend", INT4OID, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
+};
+
+/* Base64 lookup table */
+static unsigned char _crypt_itoa64[64 + 1] =
+		"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+/* Forwarded declarations */
+static void
+_scrypt_apply_options(Datum *options,
+					  size_t numoptions,
+					  int    *rounds,
+					  int    *block_size,
+					  int    *parallelism,
+					  scrypt_backend_type_t *backend);
+static text *
+scrypt_libscrypt_internal(const char *pw,
+						  const char *salt,
+						  int rounds,
+						  int block_size,
+						  int parallelism);
+static text *
+scrypt_openssl_internal(const char *pw,
+						const char *salt,
+						int rounds,
+						int block_size,
+						int parallelism);
+
+static void
+simple_salt_parser_init(struct parse_salt_info *pinfo,
+						struct pgxcrypto_option *options,
+						size_t numoptions);
+
+/* ******************** Implementation starts here ******************** */
+
+static void
+simple_salt_parser_init(struct parse_salt_info *pinfo,
+						struct pgxcrypto_option *options,
+						size_t numoptions)
+{
+	pinfo->magic        = (char *)SCRYPT_MAGIC_BYTE;
+	pinfo->magic_len    = 3;
+	pinfo->salt_len_min = SCRYPT_SALT_MAX_LEN / 4;
+	pinfo->salt         = NULL;
+	pinfo->opt_str      = NULL;
+	pinfo->num_sect     = 0;
+	pinfo->opt_len      = 0;
+	pinfo->options      = options;
+	pinfo->num_parse_options = numoptions;
 }
 
-/*
- * pg_scrypt_libscrypt() generates a scrypt password hash based
- * on libscrypt.
- *
- * See https://github.com/technion/libscrypt/tree/master for more details.
- */
-Datum
-pg_scrypt_libscrypt(PG_FUNCTION_ARGS)
+StringInfo
+xgen_salt_scrypt(Datum *options, int numoptions)
 {
-	text *password;
-	text *salt;
+	int rounds;
+	int block_size;
+	int parallelism;
+	scrypt_backend_type_t backend;
+	StringInfo result;
+	char salt_buf[SCRYPT_SALT_MAX_LEN + 1];
+	char *s_ptr;
+	bool need_sep = false;
+	int i;
+
+	_scrypt_apply_options(options,
+						  numoptions,
+						  &rounds,
+						  &block_size,
+						  &parallelism,
+						  &backend);
+
+	/*
+	 * Generate random bytes for the salt. Note that we just use up
+	 * to SCRYPT_SALT_MAX_LEN bytes.
+	 */
+	result = makeStringInfo();
+	memset(&salt_buf, '\0', SCRYPT_SALT_MAX_LEN + 1);
+
+	if (!pg_strong_random(&salt_buf, SCRYPT_SALT_MAX_LEN))
+	{
+		elog(ERROR, "cannot generate random bytes for salt");
+	}
+
+	s_ptr = salt_buf;
+
+	/* Convert bytes of the generated salt into base64 */
+	for (i = 0; i < SCRYPT_SALT_MAX_LEN; i++)
+	{
+		*s_ptr = _crypt_itoa64[salt_buf[i] & 0x3f];
+		s_ptr++;
+	}
+
+	/*
+	 * Create the preamble and options
+	 */
+	appendStringInfoString(result, SCRYPT_MAGIC_BYTE);
+
+	/* Generate the options part */
+	if (rounds != SCRYPT_WORK_FACTOR_N)
+	{
+		appendStringInfo(result, "ln=%d", rounds);
+		need_sep = true;
+	}
+
+	if (block_size != SCRYPT_BLOCK_SIZE_r)
+	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
+		appendStringInfo(result, "r=%d", block_size);
+		need_sep = true;
+	}
+
+	if (parallelism != SCRYPT_PARALLEL_FACTOR_p)
+	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
+		appendStringInfo(result, "p=%d", parallelism);
+	}
+
+	/* Now append the generated salt string */
+	appendStringInfoCharMacro(result, '$');
+	appendStringInfoString(result, salt_buf);
+	appendStringInfoCharMacro(result, '$');
+
+	/* ... and we're done */
+	return result;
+}
+
+static void
+_scrypt_apply_options(Datum *options,
+					  size_t numoptions,
+					  int    *rounds,
+					  int    *block_size,
+					  int    *parallelism,
+					  scrypt_backend_type_t *backend)
+{
+	int i;
+
+	/* Set defaults first */
+	*rounds      = SCRYPT_WORK_FACTOR_N;
+	*block_size  = SCRYPT_BLOCK_SIZE_r;
+	*parallelism = SCRYPT_PARALLEL_FACTOR_p;
+	*backend     = SCRYPT_BACKEND_LIBSCRYPT;
+
+	for (i = 0; i < numoptions; i++)
+	{
+		char *str = TextDatumGetCString(options[i]);
+
+		/* Lookup key/value separator */
+		char *sep = strchr(str, '=');
+
+		/* Found something? */
+		if (sep)
+		{
+			*sep++ = '\0';
+			struct pgxcrypto_option *opt = check_option(str,
+														scrypt_options,
+														NUM_SCRYPT_OPTIONS,
+														true);
+
+			if (opt != NULL)
+			{
+				if (strncmp(opt->name, "rounds", strlen(opt->name)) == 0)
+				{
+					*rounds = pg_strtoint32(sep);
+					continue;
+				}
+
+				if (strncmp(opt->name, "block_size", strlen(opt->name)) == 0)
+				{
+					*block_size = pg_strtoint32(sep);
+					continue;
+				}
+
+				if (strncmp(opt->name, "parallelism", strlen(opt->name)) == 0)
+				{
+					*parallelism = pg_strtoint32(sep);
+					continue;
+				}
+
+				if (strncmp(opt->name, "backend", strlen(opt->name)) == 0)
+				{
+					if (strncmp(sep, "openssl", strlen(sep)) == 0)
+					{
+						*backend = SCRYPT_BACKEND_OPENSSL;
+					}
+					else if (strncmp(sep, "libscrypt", strlen(sep)) == 0)
+					{
+						*backend = SCRYPT_BACKEND_LIBSCRYPT;
+					}
+					else
+					{
+						elog(ERROR,
+							 "unknown value for option \"backend\": \"%s\"",
+							 sep);
+					}
+				}
+			}
+
+		}
+	}
+}
+
+static text *
+scrypt_libscrypt_internal(const char *pw,
+						  const char *salt,
+						  int rounds,
+						  int block_size,
+						  int parallelism)
+{
 	bytea *result;
-	text *resb64;
-	char *pw_buf;
-	char *salt_buf;
+	text  *resb64;
+
 	char output[SCRYPT_OUTPUT_VEC_LEN];
 
+	/* Init stuff */
 	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
-	password = PG_GETARG_TEXT_PP(0);
-	salt     = PG_GETARG_TEXT_PP(1);
 
-	pw_buf = text_to_cstring(password);
-	salt_buf = text_to_cstring(salt);
-
-	if (libscrypt_scrypt((uint8_t *)pw_buf, strlen(pw_buf),
-						 (uint8_t*)salt_buf, strlen(salt_buf), SCRYPT_WORK_FACTOR_N,
-						 SCRYPT_BLOCK_SIZE_r, SCRYPT_PARALLEL_FACTOR_p,
+	if (libscrypt_scrypt((uint8_t *)pw, strlen(pw),
+						 (uint8_t*)salt, strlen(salt), rounds,
+						 block_size, parallelism,
 						 (uint8_t *)&output, sizeof output) < 0)
 	{
 		elog(ERROR, "could not hash input");
@@ -70,7 +279,103 @@ pg_scrypt_libscrypt(PG_FUNCTION_ARGS)
 											   PointerGetDatum(result),
 											   PointerGetDatum(cstring_to_text("base64"))));
 
-	PG_RETURN_TEXT_P(resb64);
+	return resb64;
+}
+
+/*
+ * pg_scrypt_libscrypt() generates a scrypt password hash based
+ * on libscrypt.
+ *
+ * See https://github.com/technion/libscrypt/tree/master for more details.
+ */
+Datum
+pgxcrypto_scrypt(PG_FUNCTION_ARGS)
+{
+	Datum *options = NULL;    /* ARRAY option elements */
+	size_t noptions = 0;   /* number of options */
+	text *password;
+	text *salt;
+	char *pw_buf;
+	char *salt_buf;
+	char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
+	char *options_buf;
+
+	int rounds;
+	int block_size;
+	int parallelism;
+	scrypt_backend_type_t backend;
+
+	struct parse_salt_info pinfo;
+
+	password   = PG_GETARG_TEXT_PP(0);
+	salt       = PG_GETARG_TEXT_PP(1);
+	backend    = SCRYPT_BACKEND_LIBSCRYPT;
+	memset(&salt_parsed, '\0', SCRYPT_SALT_MAX_LEN + 1);
+
+	pw_buf = text_to_cstring(password);
+	salt_buf = text_to_cstring(salt);
+
+	simple_salt_parser_init(&pinfo, scrypt_options, NUM_SCRYPT_OPTIONS);
+	simple_salt_parser(&pinfo, salt_buf);
+
+	/* Extract options via parsed information */
+	if (pinfo.opt_len > 0)
+	{
+
+		if (pinfo.opt_len < 0)
+		{
+			/* should not happen */
+			elog(ERROR, "unexpected negative length of options string in salt");
+		}
+
+		options_buf = (char *) palloc(pinfo.opt_len + 1);
+		memset(options_buf, '\0', pinfo.opt_len + 1);
+		memcpy(options_buf, pinfo.opt_str, pinfo.opt_len);
+
+		elog(DEBUG2, "extracted options from salt \"%s\"", options_buf);
+
+		makeOptions(options_buf,
+					pinfo.opt_len,
+					&options,
+					&noptions,
+					NUM_SCRYPT_OPTIONS);
+	}
+
+	/* Extract the plain salt string from hashed input string */
+	if (pinfo.salt_len > 0)
+	{
+		/* We ignore any bytes beyond SCRYPT_SALT_MAX_LEN */
+		size_t len = Min(pinfo.salt_len, SCRYPT_SALT_MAX_LEN);
+		memcpy(&salt_parsed, pinfo.salt, len);
+
+		elog(DEBUG2, "using salt \"%s\"", salt_parsed);
+	}
+
+	/* Read and apply default and explicit option values */
+	_scrypt_apply_options(options, noptions, &rounds, &block_size,
+						  &parallelism, &backend);
+
+	elog(DEBUG1, "scrypt opt: rounds=%d, block_size=%d, parallelism=%d",
+		 rounds, block_size, parallelism);
+
+	if (backend == SCRYPT_BACKEND_LIBSCRYPT)
+	{
+		elog(DEBUG1, "using libscrypt backend");
+		PG_RETURN_TEXT_P(scrypt_libscrypt_internal(pw_buf,
+												   salt_parsed,
+												   rounds,
+												   block_size,
+												   parallelism));
+	}
+	else {
+		elog(DEBUG1, "using openssl backend");
+		PG_RETURN_TEXT_P(scrypt_openssl_internal(pw_buf,
+												 salt_parsed,
+												 rounds,
+												 block_size,
+												 parallelism));
+	}
+
 }
 
 /*
@@ -80,15 +385,15 @@ pg_scrypt_libscrypt(PG_FUNCTION_ARGS)
  *
  * https://docs.openssl.org/1.1.1/man7/scrypt/#copyright
  */
-
-Datum
-pg_scrypt_openssl(PG_FUNCTION_ARGS)
+static text *
+scrypt_openssl_internal(const char *pw,
+						const char *salt,
+						int rounds,
+						int block_size,
+						int parallelism)
 {
+
 	EVP_PKEY_CTX *ctx;
-	text *password;
-	text *salt;
-	char *pw_buf;
-	char *salt_buf;
 	text *result;
 	text *resb64;
 	size_t output_len;
@@ -97,11 +402,6 @@ pg_scrypt_openssl(PG_FUNCTION_ARGS)
 
 	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
 	output_len = sizeof output;
-	password = PG_GETARG_TEXT_PP(0);
-	salt     = PG_GETARG_TEXT_PP(1);
-
-	pw_buf   = text_to_cstring(password);
-	salt_buf = text_to_cstring(salt);
 
 	ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SCRYPT, NULL);
 
@@ -110,27 +410,27 @@ pg_scrypt_openssl(PG_FUNCTION_ARGS)
 		elog(ERROR, "cannot initialize OpenSSL/scrypt KDF");
 	}
 
-	if (EVP_PKEY_CTX_set1_pbe_pass(ctx, pw_buf, 8) <= 0)
+	if (EVP_PKEY_CTX_set1_pbe_pass(ctx, pw, 8) <= 0)
 	{
 		elog(ERROR, "cannot call set1_pbe_pass()");
 	}
 
-	if (EVP_PKEY_CTX_set1_scrypt_salt(ctx, (unsigned char *)salt_buf, strlen(salt_buf)) <= 0)
+	if (EVP_PKEY_CTX_set1_scrypt_salt(ctx, (unsigned char *)salt, strlen(salt)) <= 0)
 	{
 		elog(ERROR, "cannot create salt");
 	}
 
-	if (EVP_PKEY_CTX_set_scrypt_N(ctx, SCRYPT_WORK_FACTOR_N) <= 0)
+	if (EVP_PKEY_CTX_set_scrypt_N(ctx, rounds) <= 0)
 	{
 		elog(ERROR, "cannot set work factor N");
 	}
 
-	if (EVP_PKEY_CTX_set_scrypt_r(ctx, SCRYPT_BLOCK_SIZE_r) <= 0)
+	if (EVP_PKEY_CTX_set_scrypt_r(ctx, block_size) <= 0)
 	{
 		elog(ERROR, "cannot set block size r");
 	}
 
-	if (EVP_PKEY_CTX_set_scrypt_p(ctx, SCRYPT_PARALLEL_FACTOR_p) <= 0)
+	if (EVP_PKEY_CTX_set_scrypt_p(ctx, parallelism) <= 0)
 	{
 		elog(ERROR, "cannot set parallelization factor");
 	}
@@ -154,6 +454,6 @@ pg_scrypt_openssl(PG_FUNCTION_ARGS)
 											   PointerGetDatum(cstring_to_text("base64"))));
 
 	/* ..and we're done */
-	PG_RETURN_TEXT_P(resb64);
+	return resb64;
 
 }

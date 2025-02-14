@@ -1,14 +1,19 @@
-CREATE OR REPLACE FUNCTION pg_scrypt_openssl(text, text)
-RETURNS text
-AS 'MODULE_PATHNAME', 'pg_scrypt_openssl'
-LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
-
-CREATE OR REPLACE FUNCTION pg_scrypt_libscrypt(text, text)
+CREATE OR REPLACE FUNCTION pgxcrypto_scrypt(text, text)
     RETURNS text
-AS 'MODULE_PATHNAME', 'pg_scrypt_libscrypt'
+AS 'MODULE_PATHNAME', 'pgxcrypto_scrypt'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+
+CREATE OR REPLACE FUNCTION pgxcrypto_argon2d(text, text)
+    RETURNS text
+AS 'MODULE_PATHNAME', 'pgxcrypto_argon2'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
 
 CREATE OR REPLACE FUNCTION pgxcrypto_test_options(text[])
     RETURNS void
 AS 'MODULE_PATHNAME', 'pgxcrypto_test_options'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+
+CREATE OR REPLACE FUNCTION pgxcrypto_gen_salt(text, text[])
+    RETURNS text
+AS 'MODULE_PATHNAME', 'xgen_salt'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;

@@ -12,7 +12,7 @@ cc = meson.get_compiler('c')
 pgxcrypto_dep = cc.find_library('scrypt')
 
 shared_module('pgxcrypto_poc', 'pgxcrypto_poc.c',
-              'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c',
+              'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',
               include_directories: [includedir_server],
               install: true,
               install_dir: pkglibdir,

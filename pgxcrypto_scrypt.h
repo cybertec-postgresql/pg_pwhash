@@ -6,12 +6,6 @@
 
 #include "pgxcrypto_poc.h"
 
-#define SCRYPT_BLOCK_SIZE_r 8
-#define SCRYPT_PARALLEL_FACTOR_p 1
-#define SCRYPT_WORK_FACTOR_N 16
-#define SCRYPT_OUTPUT_VEC_LEN 64
+PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
 
-PG_FUNCTION_INFO_V1(pg_scrypt_openssl);
-PG_FUNCTION_INFO_V1(pg_scrypt_libscrypt);
-
-#endif //PGXCRYPTO_POC_PGXCRYPTO_SCRYPT_H
+#endif
