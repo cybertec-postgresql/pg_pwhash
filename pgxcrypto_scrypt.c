@@ -75,6 +75,8 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 						struct pgxcrypto_option *options,
 						size_t numoptions);
 
+PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
+
 /* ******************** Implementation starts here ******************** */
 
 static void
@@ -142,7 +144,7 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 	/* Generate the options part */
 	if (rounds != SCRYPT_WORK_FACTOR_N)
 	{
-		appendStringInfo(result, "ln=%d", rounds);
+		appendStringInfo(result, "rounds=%d", rounds);
 		need_sep = true;
 	}
 
@@ -151,7 +153,7 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 		if (need_sep)
 			appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "r=%d", block_size);
+		appendStringInfo(result, "block_size=%d", block_size);
 		need_sep = true;
 	}
 
@@ -160,13 +162,12 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 		if (need_sep)
 			appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "p=%d", parallelism);
+		appendStringInfo(result, "parallelism=%d", parallelism);
 	}
 
 	/* Now append the generated salt string */
 	appendStringInfoCharMacro(result, '$');
 	appendStringInfoString(result, salt_buf);
-	appendStringInfoCharMacro(result, '$');
 
 	/* ... and we're done */
 	return result;

@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION pgxcrypto_test_options(text[])
 AS 'MODULE_PATHNAME', 'pgxcrypto_test_options'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
 
-CREATE OR REPLACE FUNCTION pgxcrypto_gen_salt(text, text[])
+CREATE OR REPLACE FUNCTION pgxcrypto_gen_salt(text, VARIADIC text[])
     RETURNS text
 AS 'MODULE_PATHNAME', 'xgen_salt'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;

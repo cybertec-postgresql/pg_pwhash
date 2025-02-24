@@ -16,7 +16,6 @@ struct parse_salt_info
 
   int num_sect;    /* number of parsed sections enclosed by '$' */
   char *salt;      /* direct pointer to salt string */
-  char *pw;        /* direct pointer to password string */
   size_t salt_len;
   size_t salt_len_min;
   char *magic;     /* direct pointer to magic string */

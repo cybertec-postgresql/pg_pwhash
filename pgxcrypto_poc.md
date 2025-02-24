@@ -1,17 +1,91 @@
 # Motivation
 
-This POC aims to showcase the implementation of `sha256crypt` and sha512crypt` via
-OpenSSL for `pgcrypto` integration.
+This POC aims to showcase the implementation of `scrypt` and `argon2id` in
+PostgreSQL to provide an advanced password hashing algorithm.
+
+# Requirements
+
+To build `pgxcrypto_poc` you need OpenSSL version >= `3.2` and `libscrypt` installed.
+If you use meson to built the extension, then check the output, since `meson setup` will check 
+whether prerequisites are met.
 
 # Installation
 
 
 ```shell
-USE_PGXS=1 make
-USE_PGXS=1 make install
+make && make install
 ```
 
 or via meson
 
 ```shell
+mkdir build && meson setup build .
+cd build
+ninja
+
+# you might need a privileged user to do this, depending on
+# environment
+ninja install
 ```
+
+If all prerequisites are as expected this will compile the extension and generate the 
+`pgxcrypto.so` shared library. Then load the new extension into your PostgreSQL instance:
+
+```shell
+psql <YOUR_DB>
+CREATE EXTENSION pgxcrypto_poc;
+```
+
+At the moment `pgxcrypto_poc` requires `pgcrypto` to be installed, but this requirement will be
+be relaxed in the final version.
+
+# Features
+
+This extension currently implements advanced password hashing via `argon2id` and `scrypt` hashing 
+algorithms.
+
+## Argon2i
+
+`argon2id` password hashing is implemented via [OpenSSL](https://docs.openssl.org/3.
+2/man7/EVP_KDF-ARGON2/) and [RFC9106](https://www.rfc-editor.org/rfc/rfc9106.html#name-argon2-algorithm). To compile 
+`pgxcrypto`, you need at least OpenSSL 3.2. Currently this is only shipped on selected 
+distributions, so you need to enable support for `argon2id` password hashing explicitely. 
+
+### Available options
+
+`argon2id` is adaptive and thus support a wide range of options to influence the hashing algorithm.
+`pgxcrypto` currently supports the following options for `argon2id`:
+
+- `threads`: This configures the number of threads OpenSSL uses to hash the input. The default 
+  is `1`.
+- `lanes`: This configures the blocks which are processed in parallel. `lanes` can be larger or 
+  equal to the number of configured `threads`, but not less. The default is using `2` lanes.
+- `memcost`: This is the number of memory the hashing algorithm is allowed to use. The parameter 
+  value reflects the number of `1kB` memory blocks. The default is `64`, which equals to 64 kB 
+  of memory.
+- `rounds`: This parameter configures the number of computation rounds used to generate the 
+  digest. The default is `3`.
+- `size`: This is the tag length of the digest to generate. The default of `16` results in 128 
+  Bit for the digest length (16 Bytes).
+- `output_format`: This parameter is supported by `pgxcrypto` only and allows to switch between 
+  `base64` encoded keys (the default) or `hex` encoded keys. Don't use this if you intend to 
+  share the keys between systems.
+
+## Scrypt
+
+`pgxcrpyto` implements the `scrypt` password hashing methods based on either OpenSSL or 
+`libscrypt`.
+
+# Usage
+
+## Generate a salt for scrypt hashing
+
+```postgresql
+SELECT pgxcrypto_gen_salt('scrypt', 'rounds=8');
+pgxcrypto_gen_salt                              
+─────────────────────────────────────────────────────────────────────────────
+$7$ln=1000$BJEA08TCylEe9HvVKi//8ZKXPHKKcL97ycYpwvTLa4/ah4JjbI5vDKXoCCaz.BnL
+(1 row)
+```
+
+## Encrypt a password with scrypt and a generated salt

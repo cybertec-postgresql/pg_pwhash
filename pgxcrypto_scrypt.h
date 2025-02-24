@@ -6,6 +6,7 @@
 
 #include "pgxcrypto_poc.h"
 
-PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
+StringInfo
+xgen_salt_scrypt(Datum *generator_options, int numoptions);
 
 #endif

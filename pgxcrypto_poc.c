@@ -6,6 +6,8 @@
 #include "utils/array.h"
 
 #include "pgxcrypto_poc.h"
+#include "pgxcrypto_scrypt.h"
+#include "pgxcrypto_argon2.h"
 
 PG_FUNCTION_INFO_V1(pgxcrypto_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
@@ -17,9 +19,6 @@ pgxcrypto_crypt(PG_FUNCTION_ARGS)
 
 }
 
-StringInfo
-xgen_salt_scrypt(Datum *generator_options, int numoptions);
-
 struct pgxcrypto_magic
 {
   char *name;
@@ -30,7 +29,7 @@ struct pgxcrypto_magic
 static struct pgxcrypto_magic pgxcrpyto_algo[] =
 {
 	{ "scrypt", "$7$", xgen_salt_scrypt },
-	{ "argon2d", "$argon2d$"},
+	{ "argon2id", "$argon2id$", xgen_salt_argon2id },
 	{ NULL, NULL, NULL }
 };
 
@@ -318,7 +317,10 @@ xgen_salt(PG_FUNCTION_ARGS)
 		if (strncmp(magic->name, crypt_name, strlen(crypt_name)) == 0)
 		{
 			/* call the crypto salt function */
-			salt = magic->gen(options, noptions);
+			if (magic->gen != NULL)
+				salt = magic->gen(options, noptions);
+			else
+				elog(ERROR, "requested hash has no salt generator");
 
 			/* no need to look further */
 			break;
