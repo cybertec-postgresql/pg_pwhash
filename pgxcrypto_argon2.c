@@ -36,7 +36,7 @@
  * requirement.
  */
 #define ARGON2_ROUNDS 3
-#define ARGON2_MEMORY_COST 64 /* equals to 64Mb of mem */
+#define ARGON2_MEMORY_COST 65536 /* equals to 64Mb of mem */
 
 #define ARGON2_MAGIC_BYTE "$argon2id$"
 
@@ -46,11 +46,12 @@ typedef enum {
 } argon2_output_format_t;
 
 /*
- * Recommended tag length is at least 128 bits, but
+ * Recommended tag length is 256 bits, see
  *
  * https://docs.openssl.org/3.2/man7/EVP_KDF-ARGON2/#description
  *
- * suggests 128 Byte of output length, so we use this.
+ * But we're using 128 bit for now to keep the resulting hash default length
+ * more compact.
  */
 #define ARGON2_HASH_LEN 16
 
@@ -240,24 +241,36 @@ xgen_salt_argon_internal(char  *algorithm,
 
 	if (lanes != ARGON2_MEMORY_LANES)
 	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
 		appendStringInfo(result, "lanes=%d", lanes);
 		need_sep = true;
 	}
 
 	if (memcost != ARGON2_MEMORY_COST)
 	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
 		appendStringInfo(result, "memcost=%d", memcost);
 		need_sep = true;
 	}
 
 	if (rounds != ARGON2_ROUNDS)
 	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
 		appendStringInfo(result, "rounds=%d", rounds);
 		need_sep = true;
 	}
 
 	if (size != ARGON2_HASH_LEN)
 	{
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
 		appendStringInfo(result, "size=%d", size);
 		need_sep = true;
 	}
