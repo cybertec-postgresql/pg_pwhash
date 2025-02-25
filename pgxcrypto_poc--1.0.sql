@@ -3,7 +3,7 @@ CREATE OR REPLACE FUNCTION pgxcrypto_scrypt(text, text)
 AS 'MODULE_PATHNAME', 'pgxcrypto_scrypt'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
 
-CREATE OR REPLACE FUNCTION pgxcrypto_argon2d(text, text)
+CREATE OR REPLACE FUNCTION pgxcrypto_argon2id(text, text)
     RETURNS text
 AS 'MODULE_PATHNAME', 'pgxcrypto_argon2'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
