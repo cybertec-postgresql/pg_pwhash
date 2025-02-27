@@ -38,12 +38,30 @@
 #define ARGON2_ROUNDS 3
 #define ARGON2_MEMORY_COST 65536 /* equals to 64Mb of mem */
 
-#define ARGON2_MAGIC_BYTE "$argon2id$"
+#define ARGON2_MAGIC_BYTE_ID "$argon2id$"
+#define ARGON2_MAGIC_BYTE_D "$argon2d"
 
-typedef enum {
+/*
+ * The output format for the Argon2 digest
+ */
+typedef enum
+{
   ARGON2_OUTPUT_BASE64,
   ARGON2_OUTPUT_HEX
 } argon2_output_format_t;
+
+/*
+ * Backend type to use for Argon2, currently
+ *
+ * - OpenSSL
+ * - libargon2
+ *
+ * are supported
+ */
+typedef enum {
+  ARGON2_BACKEND_TYPE_OSSL,
+  ARGON2_BACKEND_TYPE_LIBARGON2,
+} argon2_digest_backend_t;
 
 /*
  * Recommended tag length is 256 bits, see
@@ -67,16 +85,19 @@ static unsigned char _crypt_itoa64[64 + 1] =
 		"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /* Keep that in sync with below options array */
-#define NUM_ARGON2_OPTIONS 6
+#define NUM_ARGON2_OPTIONS 7
 
 struct pgxcrypto_option argon2_options[] =
 {
-		{ "threads", INT4OID, { ._int_value = ARGON2_THREADS } },
-		{ "lanes", INT4OID, { ._int_value = ARGON2_MEMORY_LANES } },
-		{ "memcost", INT4OID, { ._int_value = ARGON2_MEMORY_COST } },
-		{ "rounds", INT4OID, { ._int_value = ARGON2_ROUNDS } },
-		{ "size", INT4OID, { ._int_value = ARGON2_HASH_LEN } },
-		{ "output_format", INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } }
+		{ "threads", "p", INT4OID, { ._int_value = ARGON2_THREADS } },
+		{ "lanes", "l", INT4OID, { ._int_value = ARGON2_MEMORY_LANES } },
+		{ "memcost", "m", INT4OID, { ._int_value = ARGON2_MEMORY_COST } },
+		{ "rounds", "t", INT4OID, { ._int_value = ARGON2_ROUNDS } },
+		{ "size", "size", INT4OID, { ._int_value = ARGON2_HASH_LEN } },
+
+		/* Specific parameters to pgxcrypto */
+		{ "output_format", "output_format", INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
+		{ "backend", "backend", INT4OID, { ._int_value = ARGON2_BACKEND_TYPE_OSSL } }
 };
 
 /* *********************** Forwarded declarations *********************** */
@@ -94,7 +115,8 @@ void _argon2_apply_options(Datum *options,
 						   int   *memory_cost,
 						   int   *rounds,
 						   int   *size,
-						   argon2_output_format_t *output_format);
+						   argon2_output_format_t *output_format,
+						   argon2_digest_backend_t *backend);
 
 /* *********************** Implementation *********************** */
 
@@ -106,7 +128,8 @@ void _argon2_apply_options(Datum *options,
 						   int   *memory_cost,
 						   int   *rounds,
 						   int   *size,
-						   argon2_output_format_t  *output_format)
+						   argon2_output_format_t  *output_format,
+						   argon2_digest_backend_t *backend)
 {
 	int i;
 
@@ -116,7 +139,9 @@ void _argon2_apply_options(Datum *options,
 	*memory_cost = ARGON2_MEMORY_COST;
 	*rounds      = ARGON2_ROUNDS;
 	*size        = ARGON2_HASH_LEN;
+
 	*output_format = ARGON2_OUTPUT_BASE64;
+	*backend       = ARGON2_BACKEND_TYPE_OSSL;
 
 	for (i = 0; i < numoptions; i++)
 	{
@@ -136,13 +161,15 @@ void _argon2_apply_options(Datum *options,
 
 			if (opt != NULL)
 			{
-				if (strncmp(opt->name, "threads", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "threads", strlen(opt->name)) == 0)
+					|| (strncmp(opt->alias, "p", strlen(opt->alias))) == 0)
 				{
 					*threads = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "lanes", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "lanes", strlen(opt->name)) == 0)
+					|| (strncmp(opt->alias, "l", strlen(opt->name))) == 0)
 				{
 					*lanes = pg_strtoint32(sep);
 					continue;
@@ -188,6 +215,22 @@ void _argon2_apply_options(Datum *options,
 									   sep));
 					}
 				}
+
+				if ((strncmp(opt->name, "backend", strlen(opt->alias)) == 0)
+					|| (strncmp(opt->alias, "backend", strlen(opt->alias))) == 0)
+				{
+					if (strncmp(sep, "openssl", 7) == 0)
+					{
+						*backend = ARGON2_BACKEND_TYPE_OSSL;
+						continue;
+					}
+
+					if (strncmp(sep, "libargon2", 9) == 0)
+					{
+						*backend = ARGON2_BACKEND_TYPE_LIBARGON2;
+						continue;
+					}
+				}
 			}
 
 		}
@@ -199,7 +242,7 @@ void simple_salt_parser_init(struct parse_salt_info *pinfo,
 							 struct pgxcrypto_option *options,
 							 size_t numoptions)
 {
-	pinfo->magic        = (char *)ARGON2_MAGIC_BYTE;
+	pinfo->magic        = (char *)ARGON2_MAGIC_BYTE_ID;
 	pinfo->magic_len    = strlen(pinfo->magic);
 	pinfo->salt_len_min = ARGON2_SALT_MAX_LEN / 4;
 	pinfo->salt         = NULL;
@@ -222,7 +265,8 @@ xgen_salt_argon_internal(char  *algorithm,
 	int memcost;
 	int rounds;
 	int size;
-	argon2_output_format_t output_format;
+	argon2_output_format_t  output_format;
+	argon2_digest_backend_t backend;
 
 	_argon2_apply_options(options,
 						  numoptions,
@@ -231,40 +275,47 @@ xgen_salt_argon_internal(char  *algorithm,
 						  &memcost,
 						  &rounds,
 						  &size,
-						  &output_format);
+						  &output_format,
+						  &backend);
 
-	if (threads != ARGON2_THREADS)
-	{
-		appendStringInfo(result, "threads=%d", threads);
-		need_sep = true;
-	}
+	/*
+	 * NOTE: The option string for argon2 has the following format:
+	 *
+	 * $m=<memcost>,t=<compute rounds>,p=<threads[,data=<data>
+	 *
+	 * according to
+	 *
+	 * https://passlib.readthedocs.io/en/stable/lib/passlib.hash.argon2.html
+	 *
+	 * We must compose the parameter string in the right order but still
+	 * also support extensions with the lanes/l and size/size parameter.
+	 * Note that the data=<data> parameter is also an extension to the format,
+	 * but we don't implement that currently.
+	 */
 
 	if (lanes != ARGON2_MEMORY_LANES)
 	{
 		if (need_sep)
 			appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "lanes=%d", lanes);
+		appendStringInfo(result, "l=%d", lanes);
 		need_sep = true;
 	}
 
-	if (memcost != ARGON2_MEMORY_COST)
-	{
-		if (need_sep)
-			appendStringInfoCharMacro(result, ',');
+	if (need_sep)
+		appendStringInfoCharMacro(result, ',');
+	appendStringInfo(result, "m=%d", memcost);
+	need_sep = true;
 
-		appendStringInfo(result, "memcost=%d", memcost);
-		need_sep = true;
-	}
+	if (need_sep)
+		appendStringInfoCharMacro(result, ',');
+	appendStringInfo(result, "t=%d", rounds);
+	need_sep = true;
 
-	if (rounds != ARGON2_ROUNDS)
-	{
-		if (need_sep)
-			appendStringInfoCharMacro(result, ',');
-
-		appendStringInfo(result, "rounds=%d", rounds);
-		need_sep = true;
-	}
+	if (need_sep)
+		appendStringInfoCharMacro(result, ',');
+	appendStringInfo(result, "p=%d", threads);
+	need_sep = true;
 
 	if (size != ARGON2_HASH_LEN)
 	{
@@ -287,9 +338,6 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 #define ARGON2_DEFAULT_SALT_LEN (ARGON2_SALT_MAX_LEN / 4)
 	char      salt_buf[ ARGON2_DEFAULT_SALT_LEN + 1 ];
 	char     *s_ptr;
-
-	/* Just the default atm */
-	argon2_output_format_t output_format;
 
 	/*
 	 * Generate random bytes for the salt. We generate a random byte sequence
@@ -314,12 +362,12 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 	/*
 	 * Prepare preamble, currently just argon2id is supported.
 	 */
-	appendStringInfo(result, ARGON2_MAGIC_BYTE);
+	appendStringInfo(result, ARGON2_MAGIC_BYTE_ID);
 
 	/*
 	 * Create options string
 	 */
-	buf = xgen_salt_argon_internal(ARGON2_MAGIC_BYTE,
+	buf = xgen_salt_argon_internal(ARGON2_MAGIC_BYTE_ID,
 								   options,
 								   numoptions);
 
@@ -468,7 +516,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	int memcost;
 	int rounds;
 	int size;
-	argon2_output_format_t output_format;
+	argon2_output_format_t  output_format;
+	argon2_digest_backend_t backend;
 
 	password = PG_GETARG_TEXT_PP(0);
 	salt = PG_GETARG_TEXT_PP(1);
@@ -522,7 +571,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 	_argon2_apply_options(options, numoptions,
 						  &threads, &lanes, &memcost, &rounds, &size,
-						  &output_format);
+						  &output_format, &backend);
 
 	/* Calculate the password hash */
 	hash = argon2_internal(pw_cstr,
@@ -548,7 +597,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	if (pinfo.opt_len > 0)
 	{
 		appendStringInfo(resbuf, "%s%s$%s$%s",
-						 ARGON2_MAGIC_BYTE,
+						 ARGON2_MAGIC_BYTE_ID,
 						 options_buf,
 						 salt_buf,
 						 text_to_cstring(hash));
@@ -556,7 +605,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	else
 	{
 		appendStringInfo(resbuf, "%s%s$%s",
-						 ARGON2_MAGIC_BYTE,
+						 ARGON2_MAGIC_BYTE_ID,
 						 salt_buf,
 						 text_to_cstring(hash));
 	}

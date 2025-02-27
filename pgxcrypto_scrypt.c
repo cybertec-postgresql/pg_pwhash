@@ -31,9 +31,9 @@ typedef enum scrypt_backend_types scrypt_backend_type_t;
 
 struct pgxcrypto_option scrypt_options[] =
 {
-	{ "rounds", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
-	{ "block_size", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
-	{ "parallelism", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
+	{ "rounds", "rounds", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
+	{ "block_size", "block_size", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
+	{ "parallelism", "parallelism", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
 
 	/*
 	 * "backend" is not part of the scrypt specification but allows to identify
@@ -42,7 +42,7 @@ struct pgxcrypto_option scrypt_options[] =
 	 * Iff password hashes generated with this option name, be aware that
 	 * they might be incompatible with other systems.
 	 */
-	{ "backend", INT4OID, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
+	{ "backend", "backend", INT4OID, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
 };
 
 /* Base64 lookup table */
@@ -207,25 +207,29 @@ _scrypt_apply_options(Datum *options,
 
 			if (opt != NULL)
 			{
-				if (strncmp(opt->name, "rounds", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "rounds", strlen(opt->name) == 0)
+					|| (strncmp(opt->alias, "rounds", strlen(opt->alias)))) == 0)
 				{
 					*rounds = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "block_size", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "block_size", strlen(opt->name)) == 0)
+					|| (strncmp(opt->alias, "block_size", strlen(opt->alias))) == 0)
 				{
 					*block_size = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "parallelism", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "parallelism", strlen(opt->name)) == 0)
+					|| (strncmp(opt->alias, "parallelism", strlen(opt->name))) == 0)
 				{
 					*parallelism = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "backend", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "backend", strlen(opt->name)) == 0)
+					|| (strncmp(opt->alias, "backend", strlen(opt->alias)) == 0))
 				{
 					if (strncmp(sep, "openssl", strlen(sep)) == 0)
 					{

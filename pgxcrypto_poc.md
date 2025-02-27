@@ -44,14 +44,40 @@ be relaxed in the final version.
 This extension currently implements advanced password hashing via `argon2id` and `scrypt` hashing 
 algorithms.
 
+## Generating salts
+
+`pgxcrypto` features the `pgxcrpyto_gen_salt()` function with accepts the requested name of the
+password hash algorithm and an variadic list of options which should be passed to the specified
+algorithm. These options are specific to the requested algorithm, see the next chapter below.
+
+```postgresql
+CREATE OR REPLACE FUNCTION pgxcrypto_gen_salt(text, VARIADIC text[])
+    RETURNS text
+AS 'MODULE_PATHNAME', 'xgen_salt'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+```
+
+For example, if you want to generate a salt string suitable for password hashing via `argon2id`,
+you use `pgxcrypto_gen_salt()` like the following example:
+
+```postgresql
+bernd@localhost:bernd :1 #= SELECT pgxcrypto_gen_salt('argon2id', 'threads=2', 'memcost=4096', 'rounds=3');
+            pgxcrypto_gen_salt             
+───────────────────────────────────────────
+ $argon2id$m=4096,t=3,p=2$DcX3AacYoA3wSfi2
+(1 row)
+```
+
 ## Argon2i
 
 `argon2id` password hashing is implemented via [OpenSSL](https://docs.openssl.org/3.
 2/man7/EVP_KDF-ARGON2/) and [RFC9106](https://www.rfc-editor.org/rfc/rfc9106.html#name-argon2-algorithm). To compile 
 `pgxcrypto`, you need at least OpenSSL 3.2. Currently this is only shipped on selected 
-distributions, so you need to enable support for `argon2id` password hashing explicitely. 
+distributions, so you need to enable support for `argon2id` password hashing explicitely.
 
 ### Available options
+
+`pgxcrypto_gen_salt()`
 
 `argon2id` is adaptive and thus support a wide range of options to influence the hashing algorithm.
 `pgxcrypto` currently supports the following options for `argon2id`:
@@ -70,6 +96,9 @@ distributions, so you need to enable support for `argon2id` password hashing exp
 - `output_format`: This parameter is supported by `pgxcrypto` only and allows to switch between 
   `base64` encoded keys (the default) or `hex` encoded keys. Don't use this if you intend to 
   share the keys between systems.
+
+The parameter names are experimental at the moment and will change. This will cause compatibility 
+issues, so be aware when storing hash strings!
 
 ## Scrypt
 

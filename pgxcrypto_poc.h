@@ -3,7 +3,8 @@
 
 struct pgxcrypto_option
 {
-  char *name;
+  char *name;     /* name of the option, as specified by salt function */
+  char *alias;    /* alias of the option, as used by the final salt string */
   Oid type;
   union {
 	char *_str_value;

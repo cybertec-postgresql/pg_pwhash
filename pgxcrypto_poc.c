@@ -1,7 +1,6 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "catalog/pg_type_d.h"
-#include "nodes/parsenodes.h"
 #include "utils/builtins.h"
 #include "utils/array.h"
 
@@ -12,12 +11,6 @@
 PG_FUNCTION_INFO_V1(pgxcrypto_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
-
-Datum
-pgxcrypto_crypt(PG_FUNCTION_ARGS)
-{
-
-}
 
 struct pgxcrypto_magic
 {
@@ -49,7 +42,8 @@ struct pgxcrypto_option * check_option(const char *key,
 
 		struct pgxcrypto_option option = options[i];
 
-		if (strncmp(key, option.name, strlen(key)) == 0)
+		if ((strncmp(key, option.name, strlen(key)) == 0)
+			|| (strncmp(key, option.alias, strlen(key)) == 0))
 		{
 			return &options[i];
 		}
