@@ -3,6 +3,7 @@
 #include "catalog/pg_type_d.h"
 #include "utils/builtins.h"
 #include "utils/array.h"
+#include "openssl/evp.h"
 
 #include "pgxcrypto_poc.h"
 #include "pgxcrypto_scrypt.h"
@@ -25,6 +26,36 @@ static struct pgxcrypto_magic pgxcrpyto_algo[] =
 	{ "argon2id", "$argon2id$", xgen_salt_argon2id },
 	{ NULL, NULL, NULL }
 };
+
+
+char *pgxcrypto_to_base64(const unsigned char *input, int length)
+{
+	const int pl = 4*((length+2)/3);
+	char *output = (char *)palloc0(pl+1); /* +1 for the terminating null that EVP_EncodeBlock adds */
+	const int ol = EVP_EncodeBlock((unsigned char *)output, input, length);
+
+	if (ol != pl)
+	{
+		elog(ERROR, "base64 encode predicted \"%d\" but we got \"%d\"", pl, ol);
+	}
+
+	return output;
+}
+
+unsigned char *pgxcrypto_from_base64(const char *input, int length)
+{
+	const int pl = 3*length/4;
+	unsigned char *output = (unsigned char *) palloc0(pl+1); /* +1 null byte */
+	const int ol = EVP_DecodeBlock(output, (unsigned char *)input, length);
+
+	if (pl != ol)
+	{
+		elog(ERROR, "decode predicted \"%d\" but we got \"%d\"", pl, ol);
+
+	}
+
+	return output;
+}
 
 struct pgxcrypto_option * check_option(const char *key,
 									   struct pgxcrypto_option *options,
@@ -61,7 +92,7 @@ struct pgxcrypto_option * check_option(const char *key,
  * Examine structure of the specified salt. We expect at least
  * something in the format
  *
- * $scrypt$[...options...$]salt[$password hash]
+ * $id$[...algorithm specific...]$[...options...$]salt[$password hash]
  *
  * Check if the magic bytes confirms what we expect.
  *
@@ -95,10 +126,22 @@ simple_salt_parser(struct parse_salt_info *pinfo,
 			 pinfo->magic);
 	}
 
-	/*
-	 * Parse input for '$' restrictions.
-	 */
 	s_ptr       = salt + pinfo->magic_len;
+
+	/*
+	 * Check optional magic components. E.g. Argon2 hashes can have the used
+	 * Argon2 version preamble directly after the magic bytes, so make sure we
+	 * skip them correctly, if present. The caller is responsible to handle this
+	 * specific information itself.
+	 */
+	if (pinfo->algo_info_len > 0)
+	{
+		s_ptr += pinfo->algo_info_len;
+	}
+
+	/*
+ 	 * Parse input for '$' restrictions.
+ 	 */
 	pinfo->salt = s_ptr;
 
 	while (*s_ptr != '\0')

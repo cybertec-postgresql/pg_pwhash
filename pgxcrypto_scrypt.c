@@ -84,14 +84,15 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 						struct pgxcrypto_option *options,
 						size_t numoptions)
 {
-	pinfo->magic        = (char *)SCRYPT_MAGIC_BYTE;
-	pinfo->magic_len    = 3;
-	pinfo->salt_len_min = SCRYPT_SALT_MAX_LEN / 4;
-	pinfo->salt         = NULL;
-	pinfo->opt_str      = NULL;
-	pinfo->num_sect     = 0;
-	pinfo->opt_len      = 0;
-	pinfo->options      = options;
+	pinfo->magic         = (char *)SCRYPT_MAGIC_BYTE;
+	pinfo->magic_len     = 3;
+	pinfo->algo_info_len = 0;
+	pinfo->salt_len_min  = SCRYPT_SALT_MAX_LEN / 4;
+	pinfo->salt          = NULL;
+	pinfo->opt_str       = NULL;
+	pinfo->num_sect      = 0;
+	pinfo->opt_len       = 0;
+	pinfo->options       = options;
 	pinfo->num_parse_options = numoptions;
 }
 

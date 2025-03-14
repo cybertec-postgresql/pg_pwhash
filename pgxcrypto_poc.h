@@ -12,6 +12,11 @@ struct pgxcrypto_option
   };
 };
 
+/*
+ * Default buffer size for the algorithm info option string.
+ */
+#define PGXCRYPTO_ALGO_INFO_LEN 10
+
 struct parse_salt_info
 {
 
@@ -21,12 +26,24 @@ struct parse_salt_info
   size_t salt_len_min;
   char *magic;     /* direct pointer to magic string */
   size_t magic_len;
+  char algo_info[PGXCRYPTO_ALGO_INFO_LEN + 1]; /* info string specific to algorithm. */
+  size_t algo_info_len;                        /* length of algo specific string, 0 if not present */
   char *opt_str;   /* direct pointer to options string */
   size_t   opt_len;
   size_t num_parse_options;
   struct pgxcrypto_option *options;
 
 };
+
+/*
+ * Routine to convert binary stringto base64 representation
+ */
+char *pgxcrypto_to_base64(const unsigned char *input, int length);
+
+/*
+ * Routine to decode a base64 into a binary string.
+ */
+unsigned char *pgxcrypto_from_base64(const char *input, int length);
 
 struct pgxcrypto_option
 *check_option(const char *key,

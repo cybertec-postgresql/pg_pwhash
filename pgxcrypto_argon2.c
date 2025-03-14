@@ -13,13 +13,15 @@
 #include "openssl/thread.h"
 #include "openssl/kdf.h"
 
+#include "argon2.h"
+
 #include "pgxcrypto_poc.h"
 #include "pgxcrypto_argon2.h"
 
 /* Argon2 default option values */
 #define ARGON2_SALT_MAX_LEN 64
 #define ARGON2_THREADS 1     /* number of computing threads */
-#define ARGON2_MEMORY_LANES 2    /* memory size / lanes, processed in parallel */
+#define ARGON2_MEMORY_LANES 1  /* memory size / lanes, processed in parallel */
 
 /*
  * Default number of iterations
@@ -40,6 +42,14 @@
 
 #define ARGON2_MAGIC_BYTE_ID "$argon2id$"
 #define ARGON2_MAGIC_BYTE_D "$argon2d"
+#define ARGON2_MAGIC_BYTE_I "$argon2i"
+
+/*
+ * Default Argon2 version
+ *
+ * 0x13 is the default for OpenSSL and libargon2 backend
+ */
+#define ARGON2_DEFAULT_VERSION (unsigned int)0x13
 
 /*
  * The output format for the Argon2 digest
@@ -67,11 +77,8 @@ typedef enum {
  * Recommended tag length is 256 bits, see
  *
  * https://docs.openssl.org/3.2/man7/EVP_KDF-ARGON2/#description
- *
- * But we're using 128 bit for now to keep the resulting hash default length
- * more compact.
  */
-#define ARGON2_HASH_LEN 16
+#define ARGON2_HASH_LEN 32
 
 static StringInfo
 xgen_salt_argon_internal(char *algorithm,
@@ -79,10 +86,6 @@ xgen_salt_argon_internal(char *algorithm,
 						 int numoptions);
 
 PG_FUNCTION_INFO_V1(pgxcrypto_argon2);
-
-/* Base64 lookup table */
-static unsigned char _crypt_itoa64[64 + 1] =
-		"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /* Keep that in sync with below options array */
 #define NUM_ARGON2_OPTIONS 7
@@ -105,7 +108,8 @@ struct pgxcrypto_option argon2_options[] =
 static
 void simple_salt_parser_init(struct parse_salt_info *pinfo,
 							 struct pgxcrypto_option *options,
-							 size_t numoptions);
+							 size_t numoptions,
+							 unsigned int argon2_version);
 
 static
 void _argon2_apply_options(Datum *options,
@@ -224,11 +228,17 @@ void _argon2_apply_options(Datum *options,
 						*backend = ARGON2_BACKEND_TYPE_OSSL;
 						continue;
 					}
-
-					if (strncmp(sep, "libargon2", 9) == 0)
+					else if (strncmp(sep, "libargon2", 9) == 0)
 					{
 						*backend = ARGON2_BACKEND_TYPE_LIBARGON2;
 						continue;
+					}
+					else
+					{
+						ereport(ERROR,
+								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("unsupported backend type \"%s\"",
+									   sep));
 					}
 				}
 			}
@@ -240,10 +250,18 @@ void _argon2_apply_options(Datum *options,
 static
 void simple_salt_parser_init(struct parse_salt_info *pinfo,
 							 struct pgxcrypto_option *options,
-							 size_t numoptions)
+							 size_t numoptions,
+							 unsigned int argon2_version)
 {
 	pinfo->magic        = (char *)ARGON2_MAGIC_BYTE_ID;
 	pinfo->magic_len    = strlen(pinfo->magic);
+
+	/* Record optional version info for selected argon2 version */
+	memset(pinfo->algo_info, '\0', PGXCRYPTO_ALGO_INFO_LEN + 1);
+	pg_snprintf(pinfo->algo_info, PGXCRYPTO_ALGO_INFO_LEN, "v=%u$",
+				argon2_version);
+	pinfo->algo_info_len = strlen(pinfo->algo_info);
+
 	pinfo->salt_len_min = ARGON2_SALT_MAX_LEN / 4;
 	pinfo->salt         = NULL;
 	pinfo->opt_str      = NULL;
@@ -281,7 +299,7 @@ xgen_salt_argon_internal(char  *algorithm,
 	/*
 	 * NOTE: The option string for argon2 has the following format:
 	 *
-	 * $m=<memcost>,t=<compute rounds>,p=<threads[,data=<data>
+	 * $m=<memcost>,t=<compute rounds>,p=<threads[,data=<data>]
 	 *
 	 * according to
 	 *
@@ -333,11 +351,10 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 {
 	StringInfo result;
 	StringInfo buf;
-	int i;
 
 #define ARGON2_DEFAULT_SALT_LEN (ARGON2_SALT_MAX_LEN / 4)
-	char      salt_buf[ ARGON2_DEFAULT_SALT_LEN + 1 ];
-	char     *s_ptr;
+	unsigned char  salt_buf[ ARGON2_DEFAULT_SALT_LEN + 1 ];
+	char          *salt_encoded;
 
 	/*
 	 * Generate random bytes for the salt. We generate a random byte sequence
@@ -348,21 +365,19 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 
 	if (!pg_strong_random(&salt_buf, ARGON2_DEFAULT_SALT_LEN))
 	{
-		elog(ERROR, "cannot generrate random bytes for salt");
+		elog(ERROR, "cannot generate random bytes for salt");
 	}
 
 	/* Convert binary string to base64 */
-	s_ptr = salt_buf;
-	for (i = 0; i < ARGON2_DEFAULT_SALT_LEN; i++)
-	{
-		*s_ptr = _crypt_itoa64[salt_buf[i] & 0x3f];
-		s_ptr++;
-	}
+	salt_encoded = pgxcrypto_to_base64(salt_buf, ARGON2_DEFAULT_SALT_LEN);
 
 	/*
 	 * Prepare preamble, currently just argon2id is supported.
 	 */
-	appendStringInfo(result, ARGON2_MAGIC_BYTE_ID);
+	appendStringInfoString(result, ARGON2_MAGIC_BYTE_ID);
+
+	/* We need the Argon2 version info */
+	appendStringInfo(result, "v=%u$", ARGON2_DEFAULT_VERSION);
 
 	/*
 	 * Create options string
@@ -384,21 +399,103 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 	 * Not the generated salt string.
 	 */
 	appendStringInfoCharMacro(result, '$');
-	appendStringInfo(result, salt_buf);
+	appendStringInfo(result, salt_encoded);
 
 	/* and we're done */
 	return result;
 }
 
 static
-text *argon2_internal(const char *pw,
-					  const char *salt,
-					  int threads,
-					  int lanes,
-					  int memcost,
-					  int rounds,
-					  int size,
-					  argon2_output_format_t format)
+text *argon2_internal_libargon2(const char *pw,
+								const char *salt,
+								int threads,
+								int lanes,
+								int memcost,
+								int rounds,
+								int size, argon2_output_format_t format)
+{
+	unsigned char *hash = palloc0(size);   /* result digest */
+	unsigned char *salt_decoded;
+	text *result;                 /* function result, text representation of digest */
+	int rc;                       /* argon2 digest return code */
+
+	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
+	elog(DEBUG1, "decoded salt %s", salt_decoded);
+
+	/*
+	 * Taken from
+	 * https://github.com/P-H-C/phc-winner-argon2
+	 */
+	argon2_context context = {
+			hash,  /* output array, at least HASHLEN in size */
+			size, /* digest length */
+			pw, /* password array */
+			strlen(pw), /* password length */
+			salt_decoded,  /* salt array */
+			strlen((const char *)salt_decoded), /* salt length */
+			NULL, 0, /* optional secret data */
+			NULL, 0, /* optional associated data */
+			rounds, memcost, threads, lanes,
+			ARGON2_VERSION_13, /* algorithm version */
+			NULL, NULL, /* custom memory allocation / deallocation functions */
+			/* by default only internal memory is cleared (pwd is not wiped) */
+			ARGON2_DEFAULT_FLAGS
+	};
+
+	//argon2i_hash_raw(rounds, memcost, threads, pwd, pwdlen, salt, SALTLEN, hash, size);
+
+	/* Create argon2 hash context */
+	rc = argon2id_ctx(&context);
+
+	if (rc != ARGON2_OK)
+	{
+		elog(ERROR, "digest failed: %s", argon2_error_message(rc));
+	}
+
+	switch(format) {
+		case ARGON2_OUTPUT_BASE64:
+		{
+			char  *resb64;
+			size_t encoded_size;
+
+			resb64 = pgxcrypto_to_base64(hash, size);
+			encoded_size = strlen(resb64);
+
+			elog(NOTICE, "base64 length %lu", encoded_size);
+
+			result = (text *) palloc(encoded_size + VARHDRSZ);
+			SET_VARSIZE(result, encoded_size + VARHDRSZ);
+			memcpy(VARDATA(result), resb64, encoded_size);
+			break;
+		}
+		case ARGON2_OUTPUT_HEX:
+		{
+			text *outputtohex;
+
+			outputtohex = palloc(size + VARHDRSZ);
+			SET_VARSIZE(outputtohex, size + VARHDRSZ);
+			memcpy(VARDATA(outputtohex), hash, size);
+
+			result = DatumGetTextP(DirectFunctionCall2(binary_encode,
+													   PointerGetDatum(outputtohex),
+													   PointerGetDatum(
+															   cstring_to_text(
+																	   "hex"))));
+			break;
+		}
+	}
+
+	return result;
+}
+
+static
+text *argon2_internal_ossl(const char *pw,
+						   const char *salt,
+						   int threads,
+						   int lanes,
+						   int memcost,
+						   int rounds,
+						   int size, argon2_output_format_t format)
 {
 	EVP_KDF *ossl_kdf         = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
@@ -406,11 +503,14 @@ text *argon2_internal(const char *pw,
 	OSSL_PARAM parameters[7];
 	OSSL_PARAM *ptr;
 
-	bytea *result;
-	text  *resb64;
+	text *result;
+	unsigned char *salt_decoded;
 
 	/* Some initialization */
 	memset(output, '\0', size + 1);
+
+	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
+	elog(DEBUG1, "decoded salt %s", salt_decoded);
 
 	/* The following code is taken from OpenSSL KDF documentation for
 	 * ARGON2 and adjusted for our needs, see
@@ -437,8 +537,8 @@ text *argon2_internal(const char *pw,
 	*ptr++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST,
 										 (unsigned int *)&memcost);
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
-											   (void *)salt,
-											   strlen ((const char * )salt));
+											   (void *)salt_decoded,
+											   strlen ((const char * )salt_decoded));
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD,
 											   (void *)pw,
 											   strlen ((const char * )pw));
@@ -459,27 +559,43 @@ text *argon2_internal(const char *pw,
 		goto err;
 	}
 
+
 	/* Seems everything went smooth, prepare the result */
-
-	result = (bytea *) palloc(size + VARHDRSZ);
-	SET_VARSIZE(result, size + VARHDRSZ);
-	memcpy(VARDATA(result), output, size);
-
 	switch(format)
 	{
 		case ARGON2_OUTPUT_BASE64:
-			resb64 = DatumGetTextP(DirectFunctionCall2(binary_encode,
-													   PointerGetDatum(result),
-													   PointerGetDatum(cstring_to_text("base64"))));
+		{
+			char  *resb64;
+			size_t encoded_size;
+
+			resb64 = pgxcrypto_to_base64(output, size);
+			encoded_size = strlen(resb64);
+
+			elog(NOTICE, "base64 length %lu", encoded_size);
+
+			result = (text *) palloc(encoded_size + VARHDRSZ);
+			SET_VARSIZE(result, encoded_size + VARHDRSZ);
+			memcpy(VARDATA(result), resb64, encoded_size);
 			break;
+		}
 		case ARGON2_OUTPUT_HEX:
-			resb64 = DatumGetTextP(DirectFunctionCall2(binary_encode,
-													   PointerGetDatum(result),
-													   PointerGetDatum(cstring_to_text("hex"))));
+		{
+			text *outputtohex;
+
+			outputtohex = palloc(size + VARHDRSZ);
+			SET_VARSIZE(outputtohex, size + VARHDRSZ);
+			memcpy(VARDATA(outputtohex), output, size);
+
+			result = DatumGetTextP(DirectFunctionCall2(binary_encode,
+													   PointerGetDatum(outputtohex),
+													   PointerGetDatum(
+															   cstring_to_text(
+																	   "hex"))));
 			break;
+		}
 	}
 
-	return resb64;
+	return result;
 
 err:
 	EVP_KDF_free(ossl_kdf);
@@ -527,7 +643,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	pw_cstr = text_to_cstring(password);
 
 	/* Parse input salt string */
-	simple_salt_parser_init(&pinfo, argon2_options, NUM_ARGON2_OPTIONS);
+	simple_salt_parser_init(&pinfo, argon2_options, NUM_ARGON2_OPTIONS,
+							ARGON2_DEFAULT_VERSION);
 	simple_salt_parser(&pinfo, salt_cstr);
 
 	/* Handle options, if extracted by salt parser */
@@ -574,14 +691,33 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 						  &output_format, &backend);
 
 	/* Calculate the password hash */
-	hash = argon2_internal(pw_cstr,
-						   salt_buf,
-						   threads,
-						   lanes,
-						   memcost,
-						   rounds,
-						   size,
-						   output_format);
+	switch(backend)
+	{
+		case ARGON2_BACKEND_TYPE_OSSL:
+			hash = argon2_internal_ossl(pw_cstr,
+										salt_buf,
+										threads,
+										lanes,
+										memcost,
+										rounds,
+										size,
+										output_format);
+			break;
+
+		case ARGON2_BACKEND_TYPE_LIBARGON2:
+		{
+			hash = argon2_internal_libargon2(pw_cstr,
+											 salt_buf,
+											 threads,
+											 lanes,
+											 memcost,
+											 rounds,
+											 size,
+											 output_format);
+			break;
+		}
+	}
+
 
 	/*
 	 * Construct the output string. We need to consider
@@ -596,16 +732,18 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	 */
 	if (pinfo.opt_len > 0)
 	{
-		appendStringInfo(resbuf, "%s%s$%s$%s",
+		appendStringInfo(resbuf, "%sv=%u$%s$%s$%s",
 						 ARGON2_MAGIC_BYTE_ID,
+						 ARGON2_DEFAULT_VERSION,
 						 options_buf,
 						 salt_buf,
 						 text_to_cstring(hash));
 	}
 	else
 	{
-		appendStringInfo(resbuf, "%s%s$%s",
+		appendStringInfo(resbuf, "%sv=%u$%s$%s",
 						 ARGON2_MAGIC_BYTE_ID,
+						 ARGON2_DEFAULT_VERSION,
 						 salt_buf,
 						 text_to_cstring(hash));
 	}
