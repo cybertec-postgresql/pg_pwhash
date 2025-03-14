@@ -9,7 +9,10 @@ sharedir = run_command(pg_config, '--sharedir', check: true).stdout().strip()
 
 # check for libscrypt
 cc = meson.get_compiler('c')
-pgxcrypto_dep = cc.find_library('scrypt')
+pgxcrypto_scrypt_dep = cc.find_library('scrypt')
+
+# check for libargon2
+pgxcrypto_argon2_dep = cc.find_library('argon2')
 
 shared_module('pgxcrypto_poc', 'pgxcrypto_poc.c',
               'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',
@@ -17,7 +20,7 @@ shared_module('pgxcrypto_poc', 'pgxcrypto_poc.c',
               install: true,
               install_dir: pkglibdir,
               name_prefix: '',
-              dependencies: pgxcrypto_dep
+              dependencies: [ pgxcrypto_scrypt_dep, pgxcrypto_argon2_dep ]
              )
 
 install_data('pgxcrypto_poc.control',

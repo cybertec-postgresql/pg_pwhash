@@ -15,7 +15,7 @@ include $(PGXS)
 # Add libraries that pgcrypto depends (or might depend) on into the
 # shared library link.  (The order in which you list them here doesn't
 # matter.)
-SHLIB_LINK += $(filter -lcrypto -lz, $(LIBS))
+SHLIB_LINK += $(filter -lcrypto -lz -largon2, $(LIBS))
 ifeq ($(PORTNAME), win32)
 SHLIB_LINK += $(filter -leay32, $(LIBS))
 # those must be at the end
