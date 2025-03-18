@@ -31,9 +31,9 @@ typedef enum scrypt_backend_types scrypt_backend_type_t;
 
 struct pgxcrypto_option scrypt_options[] =
 {
-	{ "rounds", "rounds", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
-	{ "block_size", "block_size", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
-	{ "parallelism", "parallelism", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
+	{ "rounds", "ln", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
+	{ "block_size", "r", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
+	{ "parallelism", "p", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
 
 	/*
 	 * "backend" is not part of the scrypt specification but allows to identify
@@ -44,10 +44,6 @@ struct pgxcrypto_option scrypt_options[] =
 	 */
 	{ "backend", "backend", INT4OID, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
 };
-
-/* Base64 lookup table */
-static unsigned char _crypt_itoa64[64 + 1] =
-		"./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /* Forwarded declarations */
 static void
@@ -99,15 +95,14 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 StringInfo
 xgen_salt_scrypt(Datum *options, int numoptions)
 {
+	bool need_sep = false;
 	int rounds;
 	int block_size;
 	int parallelism;
 	scrypt_backend_type_t backend;
 	StringInfo result;
 	char salt_buf[SCRYPT_SALT_MAX_LEN + 1];
-	char *s_ptr;
-	bool need_sep = false;
-	int i;
+	char *salt_encoded;
 
 	_scrypt_apply_options(options,
 						  numoptions,
@@ -128,14 +123,9 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 		elog(ERROR, "cannot generate random bytes for salt");
 	}
 
-	s_ptr = salt_buf;
-
 	/* Convert bytes of the generated salt into base64 */
-	for (i = 0; i < SCRYPT_SALT_MAX_LEN; i++)
-	{
-		*s_ptr = _crypt_itoa64[salt_buf[i] & 0x3f];
-		s_ptr++;
-	}
+	salt_encoded = pgxcrypto_to_base64((const unsigned char*)salt_buf,
+									   SCRYPT_SALT_MAX_LEN);
 
 	/*
 	 * Create the preamble and options
@@ -145,7 +135,7 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 	/* Generate the options part */
 	if (rounds != SCRYPT_WORK_FACTOR_N)
 	{
-		appendStringInfo(result, "rounds=%d", rounds);
+		appendStringInfo(result, "ln=%d", rounds);
 		need_sep = true;
 	}
 
@@ -154,7 +144,7 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 		if (need_sep)
 			appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "block_size=%d", block_size);
+		appendStringInfo(result, "r=%d", block_size);
 		need_sep = true;
 	}
 
@@ -163,12 +153,12 @@ xgen_salt_scrypt(Datum *options, int numoptions)
 		if (need_sep)
 			appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "parallelism=%d", parallelism);
+		appendStringInfo(result, "p=%d", parallelism);
 	}
 
 	/* Now append the generated salt string */
 	appendStringInfoCharMacro(result, '$');
-	appendStringInfoString(result, salt_buf);
+	appendStringInfoString(result, salt_encoded);
 
 	/* ... and we're done */
 	return result;
@@ -208,29 +198,29 @@ _scrypt_apply_options(Datum *options,
 
 			if (opt != NULL)
 			{
-				if ((strncmp(opt->name, "rounds", strlen(opt->name) == 0)
-					|| (strncmp(opt->alias, "rounds", strlen(opt->alias)))) == 0)
+				if ((strncmp(opt->name, "rounds", strlen(opt->name)) == 0)
+					&& (strncmp(opt->alias, "ln", strlen(opt->alias))) == 0)
 				{
 					*rounds = pg_strtoint32(sep);
 					continue;
 				}
 
 				if ((strncmp(opt->name, "block_size", strlen(opt->name)) == 0)
-					|| (strncmp(opt->alias, "block_size", strlen(opt->alias))) == 0)
+					&& (strncmp(opt->alias, "r", strlen(opt->alias))) == 0)
 				{
 					*block_size = pg_strtoint32(sep);
 					continue;
 				}
 
 				if ((strncmp(opt->name, "parallelism", strlen(opt->name)) == 0)
-					|| (strncmp(opt->alias, "parallelism", strlen(opt->name))) == 0)
+					&& (strncmp(opt->alias, "p", strlen(opt->name))) == 0)
 				{
 					*parallelism = pg_strtoint32(sep);
 					continue;
 				}
 
 				if ((strncmp(opt->name, "backend", strlen(opt->name)) == 0)
-					|| (strncmp(opt->alias, "backend", strlen(opt->alias)) == 0))
+					&& (strncmp(opt->alias, "backend", strlen(opt->alias)) == 0))
 				{
 					if (strncmp(sep, "openssl", strlen(sep)) == 0)
 					{
@@ -303,6 +293,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	text *salt;
 	char *pw_buf;
 	char *salt_buf;
+	char *salt_decoded; /* decoded salt string */
 	char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
 	char *options_buf;
 
@@ -354,7 +345,18 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 		size_t len = Min(pinfo.salt_len, SCRYPT_SALT_MAX_LEN);
 		memcpy(&salt_parsed, pinfo.salt, len);
 
-		elog(DEBUG2, "using salt \"%s\"", salt_parsed);
+		salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
+													 SCRYPT_SALT_MAX_LEN);
+	}
+	else
+	{
+		salt_decoded = "\0";
+	}
+
+	/* Sanity check, salt must not be null */
+	if (salt_decoded == NULL)
+	{
+		elog(ERROR, "salt cannot be undefined");
 	}
 
 	/* Read and apply default and explicit option values */
@@ -368,7 +370,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	{
 		elog(DEBUG1, "using libscrypt backend");
 		PG_RETURN_TEXT_P(scrypt_libscrypt_internal(pw_buf,
-												   salt_parsed,
+												   salt_decoded,
 												   rounds,
 												   block_size,
 												   parallelism));
@@ -376,7 +378,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	else {
 		elog(DEBUG1, "using openssl backend");
 		PG_RETURN_TEXT_P(scrypt_openssl_internal(pw_buf,
-												 salt_parsed,
+												 salt_decoded,
 												 rounds,
 												 block_size,
 												 parallelism));
