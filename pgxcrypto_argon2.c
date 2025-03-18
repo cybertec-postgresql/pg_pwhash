@@ -166,32 +166,69 @@ void _argon2_apply_options(Datum *options,
 			if (opt != NULL)
 			{
 				if ((strncmp(opt->name, "threads", strlen(opt->name)) == 0)
-					|| (strncmp(opt->alias, "p", strlen(opt->alias))) == 0)
+					&& (strncmp(opt->alias, "p", strlen(opt->alias))) == 0)
 				{
 					*threads = pg_strtoint32(sep);
+
+					if (*lanes < *threads)
+					{
+						/*
+						 * The number of lanes is currently smaller than the
+						 * specified number of threads. Since argon2 requires this
+						 * at least to be equal, we force lanes to be set to the same
+						 * value than threads.
+						 *
+						 * Don't do this without giving the caller a warning that we do this,
+						 * since the parameter lanes/l influences the final digest generation and
+						 * produces different results depending on this.
+						 */
+						ereport(WARNING,
+								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("forcing parameter lanes/l equal to number of threads"),
+								errhint("This means that the number of lanes(l=%d) must be equal or greater than threads(p=%d)",
+										*lanes, *threads));
+						*lanes = *threads;
+					}
+
 					continue;
 				}
 
 				if ((strncmp(opt->name, "lanes", strlen(opt->name)) == 0)
-					|| (strncmp(opt->alias, "l", strlen(opt->name))) == 0)
+					&& (strncmp(opt->alias, "l", strlen(opt->alias))) == 0)
 				{
 					*lanes = pg_strtoint32(sep);
+
+					/*
+					 * We need to be careful when setting lanes explicitely,
+					 * since there can't be lanes < threads.
+					 */
+					if (*lanes < *threads)
+					{
+						ereport(ERROR,
+								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+								errmsg("lanes must be equal or greater than threads, currently lanes(l=%d) < threads(p=%d)",
+									   *lanes, *threads));
+					}
+
 					continue;
 				}
 
-				if (strncmp(opt->name, "memcost", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "memcost", strlen(opt->name)) == 0)
+					&& (strncmp(opt->alias, "m", strlen(opt->alias)) == 0))
 				{
 					*memory_cost = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "rounds", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "rounds", strlen(opt->name)) == 0)
+					&& (strncmp(opt->alias, "t", strlen(opt->alias)) == 0))
 				{
 					*rounds = pg_strtoint32(sep);
 					continue;
 				}
 
-				if (strncmp(opt->name, "size", strlen(opt->name)) == 0)
+				if ((strncmp(opt->name, "size", strlen(opt->name)) == 0)
+					&& (strncmp(opt->alias, "size", strlen(opt->alias)) == 0))
 				{
 					*size = pg_strtoint32(sep);
 					continue;
@@ -429,7 +466,7 @@ text *argon2_internal_libargon2(const char *pw,
 	argon2_context context = {
 			hash,  /* output array, at least HASHLEN in size */
 			size, /* digest length */
-			pw, /* password array */
+			(uint8_t *)pw, /* password array */
 			strlen(pw), /* password length */
 			salt_decoded,  /* salt array */
 			strlen((const char *)salt_decoded), /* salt length */
