@@ -73,8 +73,8 @@ struct pgxcrypto_option * check_option(const char *key,
 
 		struct pgxcrypto_option option = options[i];
 
-		if ((strncmp(key, option.name, strlen(key)) == 0)
-			|| (strncmp(key, option.alias, strlen(key)) == 0))
+		if ((strncmp(key, option.name, strlen(option.name)) == 0)
+			|| (strncmp(key, option.alias, strlen(option.alias)) == 0))
 		{
 			return &options[i];
 		}
