@@ -17,7 +17,7 @@ PG_MODULE_MAGIC;
 #define SCRYPT_BLOCK_SIZE_r 8
 #define SCRYPT_PARALLEL_FACTOR_p 1
 #define SCRYPT_OUTPUT_VEC_LEN 64
-#define SCRYPT_SALT_MAX_LEN 64l
+#define SCRYPT_SALT_MAX_LEN 16l
 
 static const char *SCRYPT_MAGIC_BYTE = "$7$";
 
@@ -46,6 +46,7 @@ struct pgxcrypto_option scrypt_options[] =
 };
 
 /* Forwarded declarations */
+
 static void
 _scrypt_apply_options(Datum *options,
 					  size_t numoptions,
@@ -53,13 +54,13 @@ _scrypt_apply_options(Datum *options,
 					  int    *block_size,
 					  int    *parallelism,
 					  scrypt_backend_type_t *backend);
-static text *
+static char *
 scrypt_libscrypt_internal(const char *pw,
 						  const char *salt,
 						  int rounds,
 						  int block_size,
 						  int parallelism);
-static text *
+static char *
 scrypt_openssl_internal(const char *pw,
 						const char *salt,
 						int rounds,
@@ -243,15 +244,14 @@ _scrypt_apply_options(Datum *options,
 	}
 }
 
-static text *
+static char *
 scrypt_libscrypt_internal(const char *pw,
 						  const char *salt,
 						  int rounds,
 						  int block_size,
 						  int parallelism)
 {
-	bytea *result;
-	text  *resb64;
+	char *output_encoded;
 
 	char output[SCRYPT_OUTPUT_VEC_LEN];
 
@@ -267,15 +267,9 @@ scrypt_libscrypt_internal(const char *pw,
 	}
 
 	/* Encode output */
-	result = (bytea *) palloc(strlen(output) + VARHDRSZ);
-	SET_VARSIZE(result, sizeof(output) + VARHDRSZ);
-	memcpy(VARDATA(result), output, sizeof(output));
+	output_encoded = pgxcrypto_to_base64((unsigned char *)output, sizeof output);
 
-	resb64 = DatumGetTextP(DirectFunctionCall2(binary_encode,
-											   PointerGetDatum(result),
-											   PointerGetDatum(cstring_to_text("base64"))));
-
-	return resb64;
+	return output_encoded;
 }
 
 /*
@@ -291,11 +285,15 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	size_t noptions = 0;   /* number of options */
 	text *password;
 	text *salt;
+
 	char *pw_buf;
 	char *salt_buf;
 	char *salt_decoded; /* decoded salt string */
 	char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
 	char *options_buf;
+	char *digest;
+	StringInfo resbuf; /* intermediate buffer to construct final password hash string */
+	text      *result; /* hash string to return */
 
 	int rounds;
 	int block_size;
@@ -366,24 +364,52 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	elog(DEBUG1, "scrypt opt: rounds=%d, block_size=%d, parallelism=%d",
 		 rounds, block_size, parallelism);
 
+	/*
+	 * Calculate the digest, depending on the requested backend.
+	 */
 	if (backend == SCRYPT_BACKEND_LIBSCRYPT)
 	{
 		elog(DEBUG1, "using libscrypt backend");
-		PG_RETURN_TEXT_P(scrypt_libscrypt_internal(pw_buf,
-												   salt_decoded,
-												   rounds,
-												   block_size,
-												   parallelism));
+		digest = scrypt_libscrypt_internal(pw_buf,
+										   salt_decoded,
+										   rounds,
+										   block_size,
+										   parallelism);
 	}
 	else {
 		elog(DEBUG1, "using openssl backend");
-		PG_RETURN_TEXT_P(scrypt_openssl_internal(pw_buf,
-												 salt_decoded,
-												 rounds,
-												 block_size,
-												 parallelism));
+		digest = scrypt_openssl_internal(pw_buf,
+										 salt_decoded,
+										 rounds,
+										 block_size,
+										 parallelism);
 	}
 
+	/*
+	 * Build final hash string
+	 */
+	resbuf = makeStringInfo();
+
+	/*
+	 * An scrypt password hash string has the following format:
+	 *
+	 * $7$ln=<cost factor>,r=<block size>,p=<parallelism>$<max 16 bytes salt>$<password digest>
+	 *
+	 * NOTE:
+	 *
+	 * We support some additional optional parameters, but we don't output them
+	 * for compatibility.
+	 */
+	appendStringInfo(resbuf, "%sln=%d,r=%d,p=%d$%s$%s",
+					 SCRYPT_MAGIC_BYTE, rounds, block_size, parallelism,
+					 salt_parsed, digest);
+
+	/* Build the final text datum and we're done */
+	result = (text *)palloc(resbuf->len + VARHDRSZ);
+	SET_VARSIZE(result, resbuf->len + VARHDRSZ);
+	memcpy(VARDATA(result), resbuf->data, resbuf->len);
+
+	PG_RETURN_TEXT_P(result);
 }
 
 /*
@@ -393,7 +419,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
  *
  * https://docs.openssl.org/1.1.1/man7/scrypt/#copyright
  */
-static text *
+static char *
 scrypt_openssl_internal(const char *pw,
 						const char *salt,
 						int rounds,
@@ -402,11 +428,10 @@ scrypt_openssl_internal(const char *pw,
 {
 
 	EVP_PKEY_CTX *ctx;
-	text *result;
-	text *resb64;
 	size_t output_len;
 
 	char output[SCRYPT_OUTPUT_VEC_LEN];
+	char *output_b64;
 
 	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
 	output_len = sizeof output;
@@ -449,19 +474,14 @@ scrypt_openssl_internal(const char *pw,
 	}
 
 	/*
-	 * Built final bytea structure to return
+	 * Encode digest
+	 *
+	 * XXX: Safe to cast length to int, since we can't exceed
+	 *      SCRYPT_OUTPUT_VEC_LEN.
 	 */
-	result = (bytea *) palloc(output_len + VARHDRSZ);
-	SET_VARSIZE(result, output_len + VARHDRSZ);
-	memcpy(VARDATA(result), output, output_len);
-
-	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
-
-	resb64 = DatumGetTextP(DirectFunctionCall2(binary_encode,
-											   PointerGetDatum(result),
-											   PointerGetDatum(cstring_to_text("base64"))));
+	output_b64 = pgxcrypto_to_base64((unsigned char *)output, (int)output_len);
 
 	/* ..and we're done */
-	return resb64;
+	return output_b64;
 
 }
