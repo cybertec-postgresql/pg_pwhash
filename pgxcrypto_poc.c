@@ -27,7 +27,12 @@ static struct pgxcrypto_magic pgxcrpyto_algo[] =
 	{ NULL, NULL, NULL }
 };
 
-
+/*
+ * Returns a base64 (PEM) encoded string representation of input. The output
+ * character array is palloc'ed and initialized with NULL bytes. If the output
+ * cannot be converted correctly, this function elog's an ERROR and thus
+ * doesn't return.
+ */
 char *pgxcrypto_to_base64(const unsigned char *input, int length)
 {
 	const int pl = 4*((length+2)/3);
@@ -42,6 +47,10 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
 	return output;
 }
 
+/*
+ * Returns a decoded representation of the base64 encoded input. If the input
+ * cannot properly decoded, this function elog's an ERROR and doesn't return.
+ */
 unsigned char *pgxcrypto_from_base64(const char *input, int length)
 {
 	const int pl = 3*length/4;

@@ -38,7 +38,7 @@
  * requirement.
  */
 #define ARGON2_ROUNDS 3
-#define ARGON2_MEMORY_COST 65536 /* equals to 64Mb of mem */
+#define ARGON2_MEMORY_COST 4096 /* equals to 4kB of mem */
 
 #define ARGON2_MAGIC_BYTE_ID "$argon2id$"
 #define ARGON2_MAGIC_BYTE_D "$argon2d"
@@ -456,7 +456,13 @@ text *argon2_internal_libargon2(const char *pw,
 	text *result;                 /* function result, text representation of digest */
 	int rc;                       /* argon2 digest return code */
 
-	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
+	/*
+	 * Decode salt bytes from base64 first.
+	 *
+	 * XXX: It should be safe to cast the string length to int, since we
+	 *      can't exceed ARGON2_SALT_MAX_LEN.
+	 */
+	salt_decoded = pgxcrypto_from_base64(salt, (int)strlen(salt));
 	elog(DEBUG1, "decoded salt %s", salt_decoded);
 
 	/*
@@ -546,6 +552,12 @@ text *argon2_internal_ossl(const char *pw,
 	/* Some initialization */
 	memset(output, '\0', size + 1);
 
+	/*
+	 * Decode base64 salt string first.
+	 *
+	 * XXX: It should be safe to cast the salt length to int, since
+	 *      we can't exceed ARGON2_SALT_MAX_LEN.
+	 */
 	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
 	elog(DEBUG1, "decoded salt %s", salt_decoded);
 
@@ -685,9 +697,11 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	simple_salt_parser(&pinfo, salt_cstr);
 
 	/* Handle options, if extracted by salt parser */
-	if (pinfo.opt_len > 0) {
+	if (pinfo.opt_len > 0)
+	{
 
-		if (pinfo.opt_len < 0) {
+		if (pinfo.opt_len < 0)
+		{
 			/* should not happen */
 			elog(ERROR, "unexpected negative length of options string in salt");
 		}
@@ -708,7 +722,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	}
 
 	/* Extract plain salt string */
-	if (pinfo.salt_len > 0) {
+	if (pinfo.salt_len > 0)
+	{
 		/*
 		 * Theoretically argon2 allows up to (2^32) - 1 bytes of salt length, but
 		 * we limit this to a more practical limit.
@@ -717,7 +732,9 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 		memcpy(salt_buf, pinfo.salt, len);
 
 		elog(DEBUG2, "using salt \"%s\"", salt_buf);
-	} else {
+	}
+	else
+	{
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("salt string cannot be empty"));
@@ -785,7 +802,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 						 text_to_cstring(hash));
 	}
 
-	result = (text *) palloc(sizeof(resbuf->len) + VARHDRSZ);
+	result = (text *) palloc(resbuf->len + VARHDRSZ);
 	SET_VARSIZE(result, resbuf->len + VARHDRSZ);
 	memcpy(VARDATA(result), resbuf->data, resbuf->len);
 
