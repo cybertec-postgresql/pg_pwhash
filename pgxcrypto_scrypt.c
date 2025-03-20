@@ -409,6 +409,8 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	SET_VARSIZE(result, resbuf->len + VARHDRSZ);
 	memcpy(VARDATA(result), resbuf->data, resbuf->len);
 
+	destroyStringInfo(resbuf);
+
 	PG_RETURN_TEXT_P(result);
 }
 
