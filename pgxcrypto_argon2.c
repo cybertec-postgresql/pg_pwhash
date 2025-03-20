@@ -463,7 +463,6 @@ text *argon2_internal_libargon2(const char *pw,
 	 *      can't exceed ARGON2_SALT_MAX_LEN.
 	 */
 	salt_decoded = pgxcrypto_from_base64(salt, (int)strlen(salt));
-	elog(DEBUG1, "decoded salt %s", salt_decoded);
 
 	/*
 	 * Taken from
@@ -559,7 +558,6 @@ text *argon2_internal_ossl(const char *pw,
 	 *      we can't exceed ARGON2_SALT_MAX_LEN.
 	 */
 	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
-	elog(DEBUG1, "decoded salt %s", salt_decoded);
 
 	/* The following code is taken from OpenSSL KDF documentation for
 	 * ARGON2 and adjusted for our needs, see
