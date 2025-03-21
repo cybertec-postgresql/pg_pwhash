@@ -5,6 +5,6 @@
 #ifndef PGXCRYPTO_POC_PGXCRYPTO_ARGON2_HXX
 #define PGXCRYPTO_POC_PGXCRYPTO_ARGON2_HXX
 
-StringInfo xgen_salt_argon2id(Datum *options, int numoptions);
+StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic);
 
 #endif //PGXCRYPTO_POC_PGXCRYPTO_ARGON2_HXX

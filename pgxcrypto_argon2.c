@@ -34,15 +34,70 @@
  *
  * The same applies to ARGON2_MEMORY_COST, which ideally is set to
  * (2^31) == 2GiB of memory. But since we might deal with memory constrained
- * systems we set it to the 2nd recommended setting which much lower memory
- * requirement.
+ * systems we set it to much lower memory settings.
  */
 #define ARGON2_ROUNDS 3
-#define ARGON2_MEMORY_COST 4096 /* equals to 4kB of mem */
+#define ARGON2_MEMORY_COST 4096 /* equals to 4MB of mem */
 
 #define ARGON2_MAGIC_BYTE_ID "$argon2id$"
-#define ARGON2_MAGIC_BYTE_D "$argon2d"
-#define ARGON2_MAGIC_BYTE_I "$argon2i"
+#define ARGON2_MAGIC_BYTE_D "$argon2d$"
+#define ARGON2_MAGIC_BYTE_I "$argon2i$"
+
+/*
+ * The following are lower and upper limits allowed for settings for hash
+ * computing. RFC 9106 allows far bigger values for some of these options. But
+ * we put a far more strict boundary on some of them for practical reasons.
+ *
+ * See
+ *
+ * https://www.rfc-editor.org/rfc/rfc9106.html#name-argon2-algorithm
+ *
+ * for details again.
+ */
+
+/* Min threads allwoed for hashing */
+#define PGXCRYPTO_ARGON2_MIN_THREADS 1
+
+/* Max threads allowed for hashing */
+#define PGXCRYPTO_ARGON2_MAX_THREADS 1024
+
+/* Min number of lanes */
+#define PGXCRYPTO_ARGON2_MIN_LANES PGXCRYPTO_ARGON2_MIN_THREADS
+
+/* Max number of lanes */
+#define PGXCRYPTO_ARGON2_MAX_LANES PGXCRYPTO_ARGON2_MAX_THREADS
+
+/* Min number for memcost (memory size) */
+#define PGXCRYPTO_ARGON2_MIN_MEMCOST 8
+
+/*
+ * Max number for memcost (memory size)
+ *
+ * We set this to match MaxAllocSize to match maximum request
+ * for memory allocations allowed in the backend (as of writing this comment
+ * around 1G).
+ *
+ * We can't rely on palloc() failing here, since allocations might be done
+ * outside our control in the hashing libraries, so be sure we don't allow
+ * arbitrary large values.
+ */
+#define PGXCRYPTO_ARGON2_MAX_MEMCOST 0x3fffffff
+
+/* Min number of computation rounds */
+#define PGXCRYPTO_ARGON2_MIN_ROUNDS 1
+
+/* Max number of computation rounds */
+#define PGXCRYPTO_ARGON2_MAX_ROUNDS INT_MAX
+
+/* Min size of digest */
+#define PGXCRYPTO_ARGON2_MIN_HASH_LEN 1
+
+/*
+ * Max size of digest
+ *
+ * Translates to
+ */
+#define PGXCRYPTO_ARGON2_MAX_HASH_LEN 0x00ffffff
 
 /*
  * Default Argon2 version
@@ -81,8 +136,7 @@ typedef enum {
 #define ARGON2_HASH_LEN 32
 
 static StringInfo
-xgen_salt_argon_internal(char *algorithm,
-						 Datum *options,
+xgen_salt_argon_internal(Datum *options,
 						 int numoptions);
 
 PG_FUNCTION_INFO_V1(pgxcrypto_argon2);
@@ -92,15 +146,22 @@ PG_FUNCTION_INFO_V1(pgxcrypto_argon2);
 
 struct pgxcrypto_option argon2_options[] =
 {
-		{ "threads", "p", INT4OID, { ._int_value = ARGON2_THREADS } },
-		{ "lanes", "l", INT4OID, { ._int_value = ARGON2_MEMORY_LANES } },
-		{ "memcost", "m", INT4OID, { ._int_value = ARGON2_MEMORY_COST } },
-		{ "rounds", "t", INT4OID, { ._int_value = ARGON2_ROUNDS } },
-		{ "size", "size", INT4OID, { ._int_value = ARGON2_HASH_LEN } },
+		{ "threads", "p", INT4OID, PGXCRYPTO_ARGON2_MIN_THREADS,
+		  PGXCRYPTO_ARGON2_MAX_THREADS, { ._int_value = ARGON2_THREADS } },
+		{ "lanes", "l", INT4OID, PGXCRYPTO_ARGON2_MIN_LANES,
+		  PGXCRYPTO_ARGON2_MAX_LANES, { ._int_value = ARGON2_MEMORY_LANES } },
+		{ "memcost", "m", INT4OID, PGXCRYPTO_ARGON2_MIN_MEMCOST,
+		  PGXCRYPTO_ARGON2_MAX_MEMCOST, { ._int_value = ARGON2_MEMORY_COST } },
+		{ "rounds", "t", INT4OID, PGXCRYPTO_ARGON2_MIN_ROUNDS,
+		  PGXCRYPTO_ARGON2_MAX_ROUNDS, { ._int_value = ARGON2_ROUNDS } },
+		{ "size", "size", INT4OID, PGXCRYPTO_ARGON2_MIN_HASH_LEN,
+		  PGXCRYPTO_ARGON2_MAX_HASH_LEN, { ._int_value = ARGON2_HASH_LEN } },
 
 		/* Specific parameters to pgxcrypto */
-		{ "output_format", "output_format", INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
-		{ "backend", "backend", INT4OID, { ._int_value = ARGON2_BACKEND_TYPE_OSSL } }
+		{ "output_format", "output_format", -1, -1,
+		  INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
+		{ "backend", "backend", INT4OID, -1, -1,
+		  { ._int_value = ARGON2_BACKEND_TYPE_OSSL } }
 };
 
 /* *********************** Forwarded declarations *********************** */
@@ -170,6 +231,12 @@ void _argon2_apply_options(Datum *options,
 				{
 					*threads = pg_strtoint32(sep);
 
+					/* Check allowed values for min/max */
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *threads,
+										   opt->alias);
+
 					if (*lanes < *threads)
 					{
 						/*
@@ -182,7 +249,7 @@ void _argon2_apply_options(Datum *options,
 						 * since the parameter lanes/l influences the final digest generation and
 						 * produces different results depending on this.
 						 */
-						ereport(WARNING,
+						ereport(DEBUG1,
 								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 								errmsg("forcing parameter lanes/l equal to number of threads"),
 								errhint("This means that the number of lanes(l=%d) must be equal or greater than threads(p=%d)",
@@ -197,6 +264,11 @@ void _argon2_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "l", strlen(opt->alias))) == 0)
 				{
 					*lanes = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *lanes,
+										   opt->alias);
 
 					/*
 					 * We need to be careful when setting lanes explicitely,
@@ -217,6 +289,11 @@ void _argon2_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "m", strlen(opt->alias)) == 0))
 				{
 					*memory_cost = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *memory_cost,
+										   opt->alias);
 					continue;
 				}
 
@@ -224,6 +301,12 @@ void _argon2_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "t", strlen(opt->alias)) == 0))
 				{
 					*rounds = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *rounds,
+										   opt->alias);
+
 					continue;
 				}
 
@@ -231,6 +314,11 @@ void _argon2_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "size", strlen(opt->alias)) == 0))
 				{
 					*size = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *size,
+										   opt->alias);
 					continue;
 				}
 
@@ -290,7 +378,7 @@ void simple_salt_parser_init(struct parse_salt_info *pinfo,
 							 size_t numoptions,
 							 unsigned int argon2_version)
 {
-	pinfo->magic        = (char *)ARGON2_MAGIC_BYTE_ID;
+	pinfo->magic        = ARGON2_MAGIC_BYTE_ID;
 	pinfo->magic_len    = strlen(pinfo->magic);
 
 	/* Record optional version info for selected argon2 version */
@@ -309,8 +397,7 @@ void simple_salt_parser_init(struct parse_salt_info *pinfo,
 }
 
 static StringInfo
-xgen_salt_argon_internal(char  *algorithm,
-						 Datum *options,
+xgen_salt_argon_internal(Datum *options,
 						 int    numoptions)
 {
 	StringInfo result   = makeStringInfo();
@@ -384,7 +471,7 @@ xgen_salt_argon_internal(char  *algorithm,
 	return result;
 }
 
-StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
+StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 {
 	StringInfo result;
 	StringInfo buf;
@@ -409,9 +496,35 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 	salt_encoded = pgxcrypto_to_base64(salt_buf, ARGON2_DEFAULT_SALT_LEN);
 
 	/*
-	 * Prepare preamble, currently just argon2id is supported.
+	 * Prepare preamble. We don't apply the magic string blindly, check it
+	 * before.
 	 */
-	appendStringInfoString(result, ARGON2_MAGIC_BYTE_ID);
+	if (magic == NULL)
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("cannot generate a valid salt string with undefined magic string"));
+	}
+
+	if (strncmp(magic, ARGON2_MAGIC_BYTE_ID, strlen(ARGON2_MAGIC_BYTE_ID)) == 0)
+	{
+		appendStringInfoString(result, ARGON2_MAGIC_BYTE_ID);
+	}
+	else if (strncmp(magic, ARGON2_MAGIC_BYTE_D, strlen(ARGON2_MAGIC_BYTE_D)) == 0)
+	{
+		appendStringInfoString(result, ARGON2_MAGIC_BYTE_D);
+	}
+	else if (strncmp(magic, ARGON2_MAGIC_BYTE_I, strlen(ARGON2_MAGIC_BYTE_I)) == 0)
+	{
+		appendStringInfoString(result, ARGON2_MAGIC_BYTE_I);
+	}
+	else
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("unsupported magic string for argon2: \"%s\"",
+					   magic));
+	}
 
 	/* We need the Argon2 version info */
 	appendStringInfo(result, "v=%u$", ARGON2_DEFAULT_VERSION);
@@ -419,8 +532,7 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 	/*
 	 * Create options string
 	 */
-	buf = xgen_salt_argon_internal(ARGON2_MAGIC_BYTE_ID,
-								   options,
+	buf = xgen_salt_argon_internal(options,
 								   numoptions);
 
 	/* Append options string to the result */
@@ -443,7 +555,8 @@ StringInfo xgen_salt_argon2id(Datum *options, int numoptions)
 }
 
 static
-text *argon2_internal_libargon2(const char *pw,
+text *argon2_internal_libargon2(const char *magic,
+								const char *pw,
 								const char *salt,
 								int threads,
 								int lanes,
@@ -487,7 +600,23 @@ text *argon2_internal_libargon2(const char *pw,
 	//argon2i_hash_raw(rounds, memcost, threads, pwd, pwdlen, salt, SALTLEN, hash, size);
 
 	/* Create argon2 hash context */
-	rc = argon2id_ctx(&context);
+	if (strncmp(magic, "ARGON2ID", 8) == 0)
+	{
+		rc = argon2id_ctx(&context);
+	}
+	else if (strncmp(magic, "ARGON2I", 7) == 0)
+	{
+		rc = argon2i_ctx(&context);
+	}
+	else if (strncmp(magic, "ARGON2D", 7) == 0)
+	{
+		rc = argon2d_ctx(&context);
+	}
+	else
+	{
+		/* oops, shouldn't happen */
+		elog(ERROR, "unexpected magic string \"%s\"", magic);
+	}
 
 	if (rc != ARGON2_OK)
 	{
@@ -530,8 +659,15 @@ text *argon2_internal_libargon2(const char *pw,
 	return result;
 }
 
+/*
+ * Hashes the password with the provided options via OpenSSL EVP_KDF_*
+ * API.
+ *
+ * The caller is responsible to provide sane options.
+ */
 static
-text *argon2_internal_ossl(const char *pw,
+text *argon2_internal_ossl(const char *ossl_argon2_name,
+						   const char *pw,
 						   const char *salt,
 						   int threads,
 						   int lanes,
@@ -591,7 +727,7 @@ text *argon2_internal_ossl(const char *pw,
 											   strlen ((const char * )pw));
 	*ptr++ = OSSL_PARAM_construct_end();
 
-	if ((ossl_kdf = EVP_KDF_fetch(NULL, "ARGON2ID", NULL)) == NULL)
+	if ((ossl_kdf = EVP_KDF_fetch(NULL, ossl_argon2_name, NULL)) == NULL)
 	{
 		goto err;
 	}
@@ -659,6 +795,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	size_t numoptions = 0;
 
 	char *options_buf = NULL;
+	char *ossl_argon2_name = "ARGON2ID";
 
 	struct parse_salt_info pinfo;
 
@@ -689,9 +826,40 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	salt_cstr = text_to_cstring(salt);
 	pw_cstr = text_to_cstring(password);
 
-	/* Parse input salt string */
+	/* Parse input salt string, prepare parser context. */
 	simple_salt_parser_init(&pinfo, argon2_options, NUM_ARGON2_OPTIONS,
 							ARGON2_DEFAULT_VERSION);
+
+	/*
+	 * We need the preamble of the salt to figure out the requested
+	 * Argon2 algorithm to use.
+	 */
+	if (strncmp(salt_cstr, ARGON2_MAGIC_BYTE_ID, strlen(ARGON2_MAGIC_BYTE_ID)) == 0)
+	{
+		pinfo.magic = ARGON2_MAGIC_BYTE_ID;
+		ossl_argon2_name = "ARGON2ID";
+	}
+	else if (strncmp(salt_cstr, ARGON2_MAGIC_BYTE_I, strlen(ARGON2_MAGIC_BYTE_I)) == 0)
+	{
+		pinfo.magic = ARGON2_MAGIC_BYTE_I;
+		ossl_argon2_name = "ARGON2I";
+	}
+	else if (strncmp(salt_cstr, ARGON2_MAGIC_BYTE_D, strlen(ARGON2_MAGIC_BYTE_D)) == 0)
+	{
+		pinfo.magic = ARGON2_MAGIC_BYTE_D;
+		ossl_argon2_name = "ARGON2D";
+	}
+	else
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("unsupported magic string in salt"));
+	}
+
+	/* Don't forget to adjust pinfo length of magic string */
+	pinfo.magic_len = strlen(pinfo.magic);
+
+	/* Parse the salt string with the now prepared parser context */
 	simple_salt_parser(&pinfo, salt_cstr);
 
 	/* Handle options, if extracted by salt parser */
@@ -743,10 +911,14 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 						  &output_format, &backend);
 
 	/* Calculate the password hash */
+	elog(DEBUG2, "hashing password with Argon2 method \"%s\"",
+		 ossl_argon2_name);
+
 	switch(backend)
 	{
 		case ARGON2_BACKEND_TYPE_OSSL:
-			hash = argon2_internal_ossl(pw_cstr,
+			hash = argon2_internal_ossl(ossl_argon2_name,
+										pw_cstr,
 										salt_buf,
 										threads,
 										lanes,
@@ -758,7 +930,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 		case ARGON2_BACKEND_TYPE_LIBARGON2:
 		{
-			hash = argon2_internal_libargon2(pw_cstr,
+			hash = argon2_internal_libargon2(ossl_argon2_name,
+											 pw_cstr,
 											 salt_buf,
 											 threads,
 											 lanes,
@@ -785,7 +958,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	if (pinfo.opt_len > 0)
 	{
 		appendStringInfo(resbuf, "%sv=%u$%s$%s$%s",
-						 ARGON2_MAGIC_BYTE_ID,
+						 pinfo.magic,
 						 ARGON2_DEFAULT_VERSION,
 						 options_buf,
 						 salt_buf,
@@ -794,7 +967,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	else
 	{
 		appendStringInfo(resbuf, "%sv=%u$%s$%s",
-						 ARGON2_MAGIC_BYTE_ID,
+						 pinfo.magic,
 						 ARGON2_DEFAULT_VERSION,
 						 salt_buf,
 						 text_to_cstring(hash));
