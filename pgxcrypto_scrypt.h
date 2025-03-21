@@ -7,6 +7,6 @@
 #include "pgxcrypto_poc.h"
 
 StringInfo
-xgen_salt_scrypt(Datum *generator_options, int numoptions);
+xgen_salt_scrypt(Datum *generator_options, int numoptions, const char *magic);
 
 #endif

@@ -19,6 +19,35 @@ PG_MODULE_MAGIC;
 #define SCRYPT_OUTPUT_VEC_LEN 64
 #define SCRYPT_SALT_MAX_LEN 16l
 
+/* Min value for rounds */
+#define PGXCRYPTO_SCRYPT_MIN_ROUNDS 1
+
+/*
+ * Max value for rounds
+ *
+ * 32 is the max allowed value here defined by python's passlib, too.
+ */
+#define PGXCRYPTO_SCRYPT_MAX_ROUNDS 32
+
+/* Min value for block size */
+#define PGXCRYPTO_SCRYPT_MIN_BLOCK_SIZE 1
+
+/*
+ * Max value for block size
+ *
+ * XXX: This probably needs to be revisited some day, but i have no numbers what
+ * a suitable max value would be atm.
+ */
+#define PGXCRYPTO_SCRYPT_MAX_BLOCK_SIZE 1024
+
+/*
+ * Min number of computing threads
+ */
+#define PGXCRYPTO_SCRYPT_MIN_PARALLELISM 1
+
+/* Max number of computing threads */
+#define PGXCRYPTO_SCRYPT_MAX_PARALLELISM 1024
+
 static const char *SCRYPT_MAGIC_BYTE = "$7$";
 
 enum scrypt_backend_types
@@ -31,9 +60,12 @@ typedef enum scrypt_backend_types scrypt_backend_type_t;
 
 struct pgxcrypto_option scrypt_options[] =
 {
-	{ "rounds", "ln", INT4OID,  {._int_value = SCRYPT_WORK_FACTOR_N } },
-	{ "block_size", "r", INT4OID, {._int_value = SCRYPT_BLOCK_SIZE_r } },
-	{ "parallelism", "p", INT4OID, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
+	{ "rounds", "ln", INT4OID,  PGXCRYPTO_SCRYPT_MIN_ROUNDS,
+	  PGXCRYPTO_SCRYPT_MAX_ROUNDS, {._int_value = SCRYPT_WORK_FACTOR_N } },
+	{ "block_size", "r", INT4OID, PGXCRYPTO_SCRYPT_MIN_BLOCK_SIZE,
+	  PGXCRYPTO_SCRYPT_MAX_BLOCK_SIZE, {._int_value = SCRYPT_BLOCK_SIZE_r } },
+	{ "parallelism", "p", INT4OID, PGXCRYPTO_SCRYPT_MIN_PARALLELISM,
+	  PGXCRYPTO_SCRYPT_MAX_PARALLELISM, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
 
 	/*
 	 * "backend" is not part of the scrypt specification but allows to identify
@@ -42,7 +74,8 @@ struct pgxcrypto_option scrypt_options[] =
 	 * Iff password hashes generated with this option name, be aware that
 	 * they might be incompatible with other systems.
 	 */
-	{ "backend", "backend", INT4OID, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
+	{ "backend", "backend", INT4OID,
+	  -1, -1, { ._int_value = (int)SCRYPT_BACKEND_OPENSSL } }
 };
 
 /* Forwarded declarations */
@@ -94,7 +127,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 }
 
 StringInfo
-xgen_salt_scrypt(Datum *options, int numoptions)
+xgen_salt_scrypt(Datum *options, int numoptions, const char *magic)
 {
 	bool need_sep = false;
 	int rounds;
@@ -203,6 +236,16 @@ _scrypt_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "ln", strlen(opt->alias))) == 0)
 				{
 					*rounds = pg_strtoint32(sep);
+
+					/*
+					 * Check min/max
+					 */
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *rounds,
+										   opt->alias);
+
+
 					continue;
 				}
 
@@ -210,6 +253,12 @@ _scrypt_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "r", strlen(opt->alias))) == 0)
 				{
 					*block_size = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *block_size,
+										   opt->alias);
+
 					continue;
 				}
 
@@ -217,6 +266,11 @@ _scrypt_apply_options(Datum *options,
 					&& (strncmp(opt->alias, "p", strlen(opt->name))) == 0)
 				{
 					*parallelism = pg_strtoint32(sep);
+
+					pgxcrypto_check_minmax(opt->min,
+										   opt->max,
+										   *parallelism,
+										   opt->alias);
 					continue;
 				}
 
