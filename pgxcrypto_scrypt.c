@@ -335,10 +335,11 @@ scrypt_libscrypt_internal(const char *pw,
 Datum
 pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 {
-	Datum *options = NULL;    /* ARRAY option elements */
-	size_t noptions = 0;   /* number of options */
-	text *password;
-	text *salt;
+	Datum *options          = NULL;    /* ARRAY option elements */
+	size_t noptions         = 0;   /* number of options */
+	int    salt_decoded_len = 0;
+	text  *password;
+	text  *salt;
 
 	char *pw_buf;
 	char *salt_buf;
@@ -398,7 +399,8 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 		memcpy(&salt_parsed, pinfo.salt, len);
 
 		salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
-													 SCRYPT_SALT_MAX_LEN);
+													 SCRYPT_SALT_MAX_LEN,
+													 &salt_decoded_len);
 	}
 	else
 	{

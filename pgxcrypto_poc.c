@@ -59,6 +59,18 @@ pgxcrypto_unpad_base64(char *input, int len, int *unpad_len)
 	return input;
 }
 
+/*
+ * Pads the base64 input if required.
+ *
+ * The caller is responsible to make sure that buffers containt compatible
+ * base64 characters.
+ *
+ * This routine strictly just operates on the length of the input buffer. If
+ * the length is modulo 4, it returns input, so the result points to the same
+ * input buffer and nothing is modified within the content of input.
+ *
+ * Otherwise a palloc'ed buffer is returned with padded '=' at the end.
+ */
 static char *
 pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
 {
@@ -186,7 +198,10 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
 		elog(ERROR, "base64 encode predicted \"%d\" but we got \"%d\"", pl, ol);
 	}
 
-	if (!pgxcrypto_setting_always_pad_base64)
+	/*
+	 * EVP_EncodeBlock() always pads, check if we have to deal with it.
+	 */
+	if (pgxcrypto_setting_always_pad_base64)
 	{
 		return output;
 	}
@@ -203,23 +218,22 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
  * padded), will implicitly padded before decoding. pgxcrypto always pads
  * output, but we also need to cooperate with external resources which might not.
  */
-unsigned char *pgxcrypto_from_base64(const char *input, int length)
+unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
 {
 	int            pd_len = length; /* padded length */
 	char          *padded;
 	unsigned char *output;
-	int            pl;
 
 	/* Pad input if necessary */
 	padded = pgxcrypto_pad_base64(input, length, &pd_len);
-	pl = 3 * pd_len / 4;
-	output = (unsigned char *) palloc0(pl+1); /* +1 null byte */
+	*outlen = 3 * pd_len / 4;
+	output = (unsigned char *) palloc0((*outlen)+1); /* +1 null byte */
 
 	const int ol = EVP_DecodeBlock(output, (unsigned char *)padded, pd_len);
 
-	if (pl != ol)
+	if ((*outlen) != ol)
 	{
-		elog(ERROR, "decode predicted \"%d\" but we got \"%d\"", pl, ol);
+		elog(ERROR, "decode predicted \"%d\" but we got \"%d\"", (*outlen), ol);
 
 	}
 

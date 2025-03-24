@@ -577,6 +577,7 @@ text *argon2_internal_libargon2(const char *magic,
 {
 	unsigned char *hash = palloc0(size);   /* result digest */
 	unsigned char *salt_decoded;
+	int            salt_decoded_len;
 	text *result;                 /* function result, text representation of digest */
 	int rc;                       /* argon2 digest return code */
 
@@ -586,7 +587,9 @@ text *argon2_internal_libargon2(const char *magic,
 	 * XXX: It should be safe to cast the string length to int, since we
 	 *      can't exceed ARGON2_SALT_MAX_LEN.
 	 */
-	salt_decoded = pgxcrypto_from_base64(salt, (int)strlen(salt));
+	salt_decoded = pgxcrypto_from_base64(salt,
+										 (int)strlen(salt),
+										 &salt_decoded_len);
 
 	/*
 	 * Taken from
@@ -598,7 +601,7 @@ text *argon2_internal_libargon2(const char *magic,
 			(uint8_t *)pw, /* password array */
 			strlen(pw), /* password length */
 			salt_decoded,  /* salt array */
-			strlen((const char *)salt_decoded), /* salt length */
+			salt_decoded_len, /* salt length */
 			NULL, 0, /* optional secret data */
 			NULL, 0, /* optional associated data */
 			rounds, memcost, threads, lanes,
@@ -696,6 +699,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 
 	text *result;
 	unsigned char *salt_decoded;
+	int            salt_decoded_len;
 
 	/* Some initialization */
 	memset(output, '\0', size + 1);
@@ -706,7 +710,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 	 * XXX: It should be safe to cast the salt length to int, since
 	 *      we can't exceed ARGON2_SALT_MAX_LEN.
 	 */
-	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt));
+	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt), &salt_decoded_len);
 
 	/* The following code is taken from OpenSSL KDF documentation for
 	 * ARGON2 and adjusted for our needs, see
@@ -736,7 +740,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 									   (unsigned int *)&argon2_version);
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
 											   (void *)salt_decoded,
-											   strlen ((const char * )salt_decoded));
+											   salt_decoded_len);
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD,
 											   (void *)pw,
 											   strlen ((const char * )pw));
@@ -768,8 +772,6 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 
 			resb64 = pgxcrypto_to_base64(output, size);
 			encoded_size = strlen(resb64);
-
-			elog(NOTICE, "base64 length %lu", encoded_size);
 
 			result = (text *) palloc(encoded_size + VARHDRSZ);
 			SET_VARSIZE(result, encoded_size + VARHDRSZ);
