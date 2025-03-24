@@ -439,11 +439,15 @@ xgen_salt_argon_internal(Datum *options,
 
 	if (lanes != ARGON2_MEMORY_LANES)
 	{
-		if (need_sep)
-			appendStringInfoCharMacro(result, ',');
+		if (lanes != threads)
+		{
+			if (need_sep)
+				appendStringInfoCharMacro(result, ',');
 
-		appendStringInfo(result, "l=%d", lanes);
-		need_sep = true;
+			appendStringInfo(result, "l=%d", lanes);
+			need_sep = true;
+		}
+
 	}
 
 	if (need_sep)
