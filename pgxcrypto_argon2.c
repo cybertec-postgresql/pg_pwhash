@@ -102,7 +102,9 @@
 /*
  * Default Argon2 version
  *
- * 0x13 is the default for OpenSSL and libargon2 backend
+ * 0x13(19) is the default for OpenSSL and libargon2 backend
+ *
+ * Besides that, 0x10(16) might also be specified.
  */
 #define ARGON2_DEFAULT_VERSION (unsigned int)0x13
 
@@ -526,7 +528,10 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 					   magic));
 	}
 
-	/* We need the Argon2 version info */
+	/*
+	 * We need the Argon2 version info. We generate always with the current
+	 * version.
+	 */
 	appendStringInfo(result, "v=%u$", ARGON2_DEFAULT_VERSION);
 
 	/*
@@ -562,7 +567,9 @@ text *argon2_internal_libargon2(const char *magic,
 								int lanes,
 								int memcost,
 								int rounds,
-								int size, argon2_output_format_t format)
+								int size,
+								argon2_output_format_t format,
+								unsigned int argon2_version)
 {
 	unsigned char *hash = palloc0(size);   /* result digest */
 	unsigned char *salt_decoded;
@@ -591,7 +598,7 @@ text *argon2_internal_libargon2(const char *magic,
 			NULL, 0, /* optional secret data */
 			NULL, 0, /* optional associated data */
 			rounds, memcost, threads, lanes,
-			ARGON2_VERSION_13, /* algorithm version */
+			argon2_version, /* algorithm version */
 			NULL, NULL, /* custom memory allocation / deallocation functions */
 			/* by default only internal memory is cleared (pwd is not wiped) */
 			ARGON2_DEFAULT_FLAGS
@@ -673,12 +680,14 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 						   int lanes,
 						   int memcost,
 						   int rounds,
-						   int size, argon2_output_format_t format)
+						   int size,
+						   argon2_output_format_t format,
+						   unsigned int argon2_version)
 {
 	EVP_KDF *ossl_kdf         = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
 	unsigned char output[size + 1];
-	OSSL_PARAM parameters[7];
+	OSSL_PARAM parameters[8];
 	OSSL_PARAM *ptr;
 
 	text *result;
@@ -719,6 +728,8 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 										 (unsigned int *)&lanes);
 	*ptr++ = OSSL_PARAM_construct_uint32(OSSL_KDF_PARAM_ARGON2_MEMCOST,
 										 (unsigned int *)&memcost);
+	*ptr++ = OSSL_PARAM_construct_uint(OSSL_KDF_PARAM_ARGON2_VERSION,
+									   (unsigned int *)&argon2_version);
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
 											   (void *)salt_decoded,
 											   strlen ((const char * )salt_decoded));
@@ -796,6 +807,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 	char *options_buf = NULL;
 	char *ossl_argon2_name = "ARGON2ID";
+	unsigned int argon2_version = ARGON2_DEFAULT_VERSION;
 
 	struct parse_salt_info pinfo;
 
@@ -831,6 +843,20 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 							ARGON2_DEFAULT_VERSION);
 
 	/*
+	 * Minimum length of salt is
+ 	 *
+ 	 * length(magic) + length(algo_info_len)
+ 	 *
+ 	 * Note that simple_salt_parser() below performs its own checks, too.
+ 	 */
+	if (strlen(salt_cstr) < (pinfo.magic_len + pinfo.algo_info_len))
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("salt string does not provide enough settings"));
+	}
+
+	/*
 	 * We need the preamble of the salt to figure out the requested
 	 * Argon2 algorithm to use.
 	 */
@@ -861,6 +887,46 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 	/* Parse the salt string with the now prepared parser context */
 	simple_salt_parser(&pinfo, salt_cstr);
+
+	/*
+	 * Extract requested Argon2 version. If not found, silently assume
+	 * current version.
+	 *
+	 * XXX: According to some sources, the version option is required since the
+	 *      Argon2 v1.3 specification. It is tempting to assume that getting
+	 *      a salt string without this might indicate to use some older specs,
+	 *      but we ignore that fact and work with the current one implemented
+	 *      here.
+	 */
+	if (strncmp((salt_cstr + pinfo.magic_len), "v=", 2) == 0)
+	{
+		/* extract the version number requested */
+		char *v_ptr = salt_cstr + pinfo.magic_len;
+		char  version_buf[pinfo.algo_info_len + 1];
+		char *sep;
+
+		/* copy over the version string, but without the trailing $ . */
+		memset(version_buf, '\0', pinfo.algo_info_len + 1);
+		memcpy(version_buf, v_ptr, pinfo.algo_info_len - 1);
+
+		sep = strchr(version_buf, '=');
+
+		if (sep)
+		{
+			*sep++ = '\0';
+			argon2_version = (unsigned int)pg_strtoint32(sep);
+		}
+
+		/* Check version number, only 0x10 and 0x13 are currently supported */
+		if ( (argon2_version != 0x10) && (argon2_version != 0x13) )
+		{
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("unsupported argon2 version \"%u\"",
+						   argon2_version),
+					errhint("Supported versions are 16 and 19(default)"));
+		}
+	}
 
 	/* Handle options, if extracted by salt parser */
 	if (pinfo.opt_len > 0)
@@ -925,7 +991,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 										memcost,
 										rounds,
 										size,
-										output_format);
+										output_format,
+										argon2_version);
 			break;
 
 		case ARGON2_BACKEND_TYPE_LIBARGON2:
@@ -938,7 +1005,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 											 memcost,
 											 rounds,
 											 size,
-											 output_format);
+											 output_format,
+											 argon2_version);
 			break;
 		}
 	}
@@ -959,7 +1027,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	{
 		appendStringInfo(resbuf, "%sv=%u$%s$%s$%s",
 						 pinfo.magic,
-						 ARGON2_DEFAULT_VERSION,
+						 argon2_version,
 						 options_buf,
 						 salt_buf,
 						 text_to_cstring(hash));
@@ -968,7 +1036,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	{
 		appendStringInfo(resbuf, "%sv=%u$%s$%s",
 						 pinfo.magic,
-						 ARGON2_DEFAULT_VERSION,
+						 argon2_version,
 						 salt_buf,
 						 text_to_cstring(hash));
 	}
