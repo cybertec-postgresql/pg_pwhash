@@ -1,5 +1,6 @@
 #include "pgxcrypto_scrypt.h"
 
+#include "math.h"
 #include "openssl/evp.h"
 #include "openssl/kdf.h"
 
@@ -12,11 +13,10 @@
 
 PG_MODULE_MAGIC;
 
-#define NUM_SCRYPT_OPTIONS 4
 #define SCRYPT_WORK_FACTOR_N 16
 #define SCRYPT_BLOCK_SIZE_r 8
 #define SCRYPT_PARALLEL_FACTOR_p 1
-#define SCRYPT_OUTPUT_VEC_LEN 64
+#define SCRYPT_OUTPUT_VEC_LEN 32
 #define SCRYPT_SALT_MAX_LEN 16l
 
 /* Min value for rounds */
@@ -48,7 +48,7 @@ PG_MODULE_MAGIC;
 /* Max number of computing threads */
 #define PGXCRYPTO_SCRYPT_MAX_PARALLELISM 1024
 
-static const char *SCRYPT_MAGIC_BYTE = "$7$";
+static const char *SCRYPT_MAGIC_BYTE = "$scrypt$";
 
 enum scrypt_backend_types
 {
@@ -58,6 +58,7 @@ enum scrypt_backend_types
 
 typedef enum scrypt_backend_types scrypt_backend_type_t;
 
+#define NUM_SCRYPT_OPTIONS 4
 struct pgxcrypto_option scrypt_options[] =
 {
 	{ "rounds", "ln", INT4OID,  PGXCRYPTO_SCRYPT_MIN_ROUNDS,
@@ -115,7 +116,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 						size_t numoptions)
 {
 	pinfo->magic         = (char *)SCRYPT_MAGIC_BYTE;
-	pinfo->magic_len     = 3;
+	pinfo->magic_len     = strlen(pinfo->magic);
 	pinfo->algo_info_len = 0;
 	pinfo->salt_len_min  = SCRYPT_SALT_MAX_LEN / 4;
 	pinfo->salt          = NULL;
@@ -245,7 +246,6 @@ _scrypt_apply_options(Datum *options,
 										   *rounds,
 										   opt->alias);
 
-
 					continue;
 				}
 
@@ -313,9 +313,9 @@ scrypt_libscrypt_internal(const char *pw,
 	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
 
 	if (libscrypt_scrypt((uint8_t *)pw, strlen(pw),
-						 (uint8_t*)salt, strlen(salt), rounds,
+						 (uint8_t*)salt, strlen(salt), pow(2, rounds),
 						 block_size, parallelism,
-						 (uint8_t *)&output, sizeof output) < 0)
+						 (uint8_t *)&output, SCRYPT_OUTPUT_VEC_LEN) < 0)
 	{
 		elog(ERROR, "could not hash input");
 	}
@@ -344,7 +344,8 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	char *pw_buf;
 	char *salt_buf;
 	char *salt_decoded; /* decoded salt string */
-	char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
+	char *salt_parsed;
+	//char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
 	char *options_buf;
 	char *digest;
 	StringInfo resbuf; /* intermediate buffer to construct final password hash string */
@@ -360,7 +361,6 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	password   = PG_GETARG_TEXT_PP(0);
 	salt       = PG_GETARG_TEXT_PP(1);
 	backend    = SCRYPT_BACKEND_LIBSCRYPT;
-	memset(&salt_parsed, '\0', SCRYPT_SALT_MAX_LEN + 1);
 
 	pw_buf = text_to_cstring(password);
 	salt_buf = text_to_cstring(salt);
@@ -378,8 +378,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 			elog(ERROR, "unexpected negative length of options string in salt");
 		}
 
-		options_buf = (char *) palloc(pinfo.opt_len + 1);
-		memset(options_buf, '\0', pinfo.opt_len + 1);
+		options_buf = (char *) palloc0(pinfo.opt_len + 1);
 		memcpy(options_buf, pinfo.opt_str, pinfo.opt_len);
 
 		elog(DEBUG2, "extracted options from salt \"%s\"", options_buf);
@@ -391,20 +390,21 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 					NUM_SCRYPT_OPTIONS);
 	}
 
-	/* Extract the plain salt string from hashed input string */
+	/* Extract the plain salt string from hash input string */
 	if (pinfo.salt_len > 0)
 	{
-		/* We ignore any bytes beyond SCRYPT_SALT_MAX_LEN */
-		size_t len = Min(pinfo.salt_len, SCRYPT_SALT_MAX_LEN);
-		memcpy(&salt_parsed, pinfo.salt, len);
+		salt_parsed = (char *)palloc0(pinfo.salt_len + 1);
+		memcpy(salt_parsed, pinfo.salt, pinfo.salt_len);
 
+		elog(DEBUG2, "parsed salt: \"%s\"", salt_parsed);
 		salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
-													 SCRYPT_SALT_MAX_LEN,
+													 (int)(pinfo.salt_len),
 													 &salt_decoded_len);
 	}
 	else
 	{
 		salt_decoded = "\0";
+		salt_parsed  = "\0";
 	}
 
 	/* Sanity check, salt must not be null */
@@ -458,13 +458,17 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	 */
 	appendStringInfo(resbuf, "%sln=%d,r=%d,p=%d$%s$%s",
 					 SCRYPT_MAGIC_BYTE, rounds, block_size, parallelism,
-					 salt_parsed, digest);
+					 pgxcrypto_to_base64((unsigned char *)salt_decoded,
+										 (int)strlen(salt_decoded)), digest);
 
 	/* Build the final text datum and we're done */
 	result = (text *)palloc(resbuf->len + VARHDRSZ);
 	SET_VARSIZE(result, resbuf->len + VARHDRSZ);
 	memcpy(VARDATA(result), resbuf->data, resbuf->len);
 
+	/* free our stuff */
+	pfree(salt_parsed);
+	pfree(salt_decoded);
 	destroyStringInfo(resbuf);
 
 	PG_RETURN_TEXT_P(result);
@@ -492,7 +496,7 @@ scrypt_openssl_internal(const char *pw,
 	char *output_b64;
 
 	memset(output, '\0', SCRYPT_OUTPUT_VEC_LEN);
-	output_len = sizeof output;
+	output_len = SCRYPT_OUTPUT_VEC_LEN;
 
 	ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_SCRYPT, NULL);
 
@@ -501,17 +505,17 @@ scrypt_openssl_internal(const char *pw,
 		elog(ERROR, "cannot initialize OpenSSL/scrypt KDF");
 	}
 
-	if (EVP_PKEY_CTX_set1_pbe_pass(ctx, pw, 8) <= 0)
+	if (EVP_PKEY_CTX_set1_pbe_pass(ctx, pw, strlen(pw)) <= 0)
 	{
 		elog(ERROR, "cannot call set1_pbe_pass()");
 	}
 
-	if (EVP_PKEY_CTX_set1_scrypt_salt(ctx, (unsigned char *)salt, strlen(salt)) <= 0)
+	if (EVP_PKEY_CTX_set1_scrypt_salt(ctx, (unsigned char *)salt, (int)strlen(salt)) <= 0)
 	{
 		elog(ERROR, "cannot create salt");
 	}
 
-	if (EVP_PKEY_CTX_set_scrypt_N(ctx, rounds) <= 0)
+	if (EVP_PKEY_CTX_set_scrypt_N(ctx, pow(2, rounds)) <= 0)
 	{
 		elog(ERROR, "cannot set work factor N");
 	}
