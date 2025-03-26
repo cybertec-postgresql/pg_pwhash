@@ -62,7 +62,7 @@ pgxcrypto_unpad_base64(char *input, int len, int *unpad_len)
 /*
  * Pads the base64 input if required.
  *
- * The caller is responsible to make sure that buffers containt compatible
+ * The caller is responsible to make sure that buffers checks compatible
  * base64 characters.
  *
  * This routine strictly just operates on the length of the input buffer. If
@@ -74,11 +74,11 @@ pgxcrypto_unpad_base64(char *input, int len, int *unpad_len)
 static char *
 pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
 {
-	int   pads = (length % 4);
+	int   pads = ( 4 - (length % 4) );
 	char *padded;
 
 	/* Fast path if no padding required */
-	if (pads == 0)
+	if (pads == 4)
 	{
 		*pd_len = length;
 		return (char *)input;
@@ -87,7 +87,7 @@ pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
 	*pd_len = length + pads;
 	padded = palloc0(*pd_len + 1);
 	memcpy(padded, input, length);
-	memset(padded + length, '=', sizeof(char) * pads);
+	memset(padded + length, '=', sizeof(char) * pads );
 
 	return padded;
 }
@@ -95,7 +95,7 @@ pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
 /*
  * Check specified lower and upper bound against value.
  *
- * Will ereport an ERROR in case valuee exceeds either one of them.
+ * Will ereport an ERROR in case value exceeds either one of them.
  */
 void
 pgxcrypto_check_minmax(int min, int max, int value, const char *param_name)
@@ -217,19 +217,24 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
  * Please note that short base64 input (thus input which is not properly
  * padded), will implicitly padded before decoding. pgxcrypto always pads
  * output, but we also need to cooperate with external resources which might not.
+ *
+ * outlen stores the number of 3 byte blocks decoded by OpenSSLs'
+ * EVP_DecodeBlock() and doesn't reflect the real number of bytes contained in
+ * the returned buffer!
  */
 unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
 {
 	int            pd_len = length; /* padded length */
+	int            ol;
 	char          *padded;
 	unsigned char *output;
 
 	/* Pad input if necessary */
 	padded = pgxcrypto_pad_base64(input, length, &pd_len);
-	*outlen = 3 * pd_len / 4;
-	output = (unsigned char *) palloc0((*outlen)+1); /* +1 null byte */
+	ol = 3 * pd_len / 4;
+	output = (unsigned char *) palloc0(ol + 1); /* +1 null byte */
 
-	const int ol = EVP_DecodeBlock(output, (unsigned char *)padded, pd_len);
+	*outlen = EVP_DecodeBlock(output, (unsigned char *)padded, pd_len);
 
 	if ((*outlen) != ol)
 	{
