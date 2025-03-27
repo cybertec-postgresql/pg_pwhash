@@ -14,13 +14,20 @@ pgxcrypto_scrypt_dep = cc.find_library('scrypt')
 # check for libargon2
 pgxcrypto_argon2_dep = cc.find_library('argon2')
 
+# need libm (libmath)
+pgxcrypto_libm_dep = cc.find_library('m')
+
+# need libcrypt
+pgxcrypto_crypt_dep = cc.find_library('crypt')
+
 shared_module('pgxcrypto_poc', 'pgxcrypto_poc.c',
               'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',
               include_directories: [includedir_server],
               install: true,
               install_dir: pkglibdir,
               name_prefix: '',
-              dependencies: [ pgxcrypto_scrypt_dep, pgxcrypto_argon2_dep ]
+              dependencies: [ pgxcrypto_libm_dep, pgxcrypto_scrypt_dep,
+                              pgxcrypto_argon2_dep, pgxcrypto_crypt_dep ]
              )
 
 install_data('pgxcrypto_poc.control',
@@ -47,7 +54,7 @@ pg_regress = find_program('pg_regress',
                           dirs: [pkglibdir / 'pgxs/src/test/regress']
                          )
 
-regress_tests = []
+regress_tests = [ 'pgxcrypto.sql' ]
 
 test('regress',
      pg_regress,

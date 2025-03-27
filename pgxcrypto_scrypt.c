@@ -1,5 +1,6 @@
 #include "pgxcrypto_scrypt.h"
 
+#include <crypt.h>
 #include "math.h"
 #include "openssl/evp.h"
 #include "openssl/kdf.h"
@@ -48,18 +49,17 @@ PG_MODULE_MAGIC;
 /* Max number of computing threads */
 #define PGXCRYPTO_SCRYPT_MAX_PARALLELISM 1024
 
-static const char *SCRYPT_MAGIC_BYTE = "$scrypt$";
-
 enum scrypt_backend_types
 {
   SCRYPT_BACKEND_LIBSCRYPT,
   SCRYPT_BACKEND_OPENSSL,
+  SCRYPT_BACKEND_CRYPT
 };
 
 typedef enum scrypt_backend_types scrypt_backend_type_t;
 
 #define NUM_SCRYPT_OPTIONS 4
-struct pgxcrypto_option scrypt_options[] =
+static struct pgxcrypto_option scrypt_options[] =
 {
 	{ "rounds", "ln", INT4OID,  PGXCRYPTO_SCRYPT_MIN_ROUNDS,
 	  PGXCRYPTO_SCRYPT_MAX_ROUNDS, {._int_value = SCRYPT_WORK_FACTOR_N } },
@@ -104,6 +104,7 @@ scrypt_openssl_internal(const char *pw,
 static void
 simple_salt_parser_init(struct parse_salt_info *pinfo,
 						struct pgxcrypto_option *options,
+						const char *magic_string,
 						size_t numoptions);
 
 PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
@@ -113,9 +114,12 @@ PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
 static void
 simple_salt_parser_init(struct parse_salt_info *pinfo,
 						struct pgxcrypto_option *options,
+						const char *magic_string,
 						size_t numoptions)
 {
-	pinfo->magic         = (char *)SCRYPT_MAGIC_BYTE;
+	Assert((pinfo != NULL) && (magic_string != NULL));
+
+	pinfo->magic         = (char *)magic_string;
 	pinfo->magic_len     = strlen(pinfo->magic);
 	pinfo->algo_info_len = 0;
 	pinfo->salt_len_min  = SCRYPT_SALT_MAX_LEN / 4;
@@ -165,7 +169,7 @@ xgen_salt_scrypt(Datum *options, int numoptions, const char *magic)
 	/*
 	 * Create the preamble and options
 	 */
-	appendStringInfoString(result, SCRYPT_MAGIC_BYTE);
+	appendStringInfoString(result, pgxcrypto_scrypt_magic_ident());
 
 	/* Generate the options part */
 	if (rounds != SCRYPT_WORK_FACTOR_N)
@@ -225,11 +229,12 @@ _scrypt_apply_options(Datum *options,
 		/* Found something? */
 		if (sep)
 		{
+			struct pgxcrypto_option *opt;
 			*sep++ = '\0';
-			struct pgxcrypto_option *opt = check_option(str,
-														scrypt_options,
-														NUM_SCRYPT_OPTIONS,
-														true);
+			opt = check_option(str,
+							   scrypt_options,
+							   NUM_SCRYPT_OPTIONS,
+							   true);
 
 			if (opt != NULL)
 			{
@@ -285,6 +290,10 @@ _scrypt_apply_options(Datum *options,
 					{
 						*backend = SCRYPT_BACKEND_LIBSCRYPT;
 					}
+					else if (strncmp(sep, "crypt", strlen(sep)) == 0)
+					{
+						*backend = SCRYPT_BACKEND_CRYPT;
+					}
 					else
 					{
 						elog(ERROR,
@@ -306,6 +315,15 @@ _scrypt_apply_options(Datum *options,
 					errmsg("bogus option specified in salt"));
 		}
 	}
+}
+
+static char *
+scrypt_crypt_internal(const char *pw,
+					  const char *salt)
+{
+
+	return crypt(pw, salt);
+
 }
 
 static char *
@@ -375,7 +393,10 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	pw_buf = text_to_cstring(password);
 	salt_buf = text_to_cstring(salt);
 
-	simple_salt_parser_init(&pinfo, scrypt_options, NUM_SCRYPT_OPTIONS);
+	simple_salt_parser_init(&pinfo,
+							scrypt_options,
+							pgxcrypto_scrypt_magic_ident(),
+							NUM_SCRYPT_OPTIONS);
 	simple_salt_parser(&pinfo, salt_buf);
 
 	/* We require options and salt section at least for scrypt */
@@ -441,23 +462,36 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	/*
 	 * Calculate the digest, depending on the requested backend.
 	 */
-	if (backend == SCRYPT_BACKEND_LIBSCRYPT)
+	switch(backend)
 	{
-		elog(DEBUG1, "using libscrypt backend");
-		digest = scrypt_libscrypt_internal(pw_buf,
-										   salt_decoded,
-										   rounds,
-										   block_size,
-										   parallelism);
+		case SCRYPT_BACKEND_LIBSCRYPT:
+		{
+			elog(DEBUG1, "using libscrypt backend");
+			digest = scrypt_libscrypt_internal(pw_buf,
+											   salt_decoded,
+											   rounds,
+											   block_size,
+											   parallelism);
+			break;
+		}
+		case SCRYPT_BACKEND_OPENSSL:
+		{
+			elog(DEBUG1, "using openssl backend");
+			digest = scrypt_openssl_internal(pw_buf,
+											 salt_decoded,
+											 rounds,
+											 block_size,
+											 parallelism);
+			break;
+		}
+		case SCRYPT_BACKEND_CRYPT:
+		{
+			elog(DEBUG1, "using crypt backend");
+			digest = scrypt_crypt_internal(pw_buf, salt_parsed);
+			break;
+		}
 	}
-	else {
-		elog(DEBUG1, "using openssl backend");
-		digest = scrypt_openssl_internal(pw_buf,
-										 salt_decoded,
-										 rounds,
-										 block_size,
-										 parallelism);
-	}
+
 
 	/*
 	 * Build final hash string
@@ -474,8 +508,12 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	 * We support some additional optional parameters, but we don't output them
 	 * for compatibility.
 	 */
-	appendStringInfo(resbuf, "%sln=%d,r=%d,p=%d$%s$%s",
-					 SCRYPT_MAGIC_BYTE, rounds, block_size, parallelism,
+	appendStringInfo(resbuf,
+					 "%sln=%d,r=%d,p=%d$%s$%s",
+					 pgxcrypto_scrypt_magic_ident(),
+					 rounds,
+					 block_size,
+					 parallelism,
 					 pgxcrypto_to_base64((unsigned char *)salt_decoded,
 										 (int)strlen(salt_decoded)), digest);
 

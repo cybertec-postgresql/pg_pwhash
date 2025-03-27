@@ -146,7 +146,7 @@ PG_FUNCTION_INFO_V1(pgxcrypto_argon2);
 /* Keep that in sync with below options array */
 #define NUM_ARGON2_OPTIONS 7
 
-struct pgxcrypto_option argon2_options[] =
+static struct pgxcrypto_option argon2_options[] =
 {
 		{ "threads", "p", INT4OID, PGXCRYPTO_ARGON2_MIN_THREADS,
 		  PGXCRYPTO_ARGON2_MAX_THREADS, { ._int_value = ARGON2_THREADS } },
@@ -219,12 +219,14 @@ void _argon2_apply_options(Datum *options,
 
 		if (sep)
 		{
+			struct pgxcrypto_option *opt;
+
 			/* Make sure string is null terminated */
 			*sep++ = '\0';
-			struct pgxcrypto_option *opt = check_option(str,
-					argon2_options,
-					NUM_ARGON2_OPTIONS,
-					true);
+			opt = check_option(str,
+							   argon2_options,
+							   NUM_ARGON2_OPTIONS,
+							   true);
 
 			if (opt != NULL)
 			{
@@ -557,7 +559,7 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 	 * Not the generated salt string.
 	 */
 	appendStringInfoCharMacro(result, '$');
-	appendStringInfo(result, salt_encoded);
+	appendStringInfoString(result, salt_encoded);
 
 	/* and we're done */
 	return result;
@@ -576,6 +578,7 @@ text *argon2_internal_libargon2(const char *magic,
 								unsigned int argon2_version)
 {
 	unsigned char *hash = palloc0(size);   /* result digest */
+	argon2_context context;
 	unsigned char *salt_decoded;
 	int            salt_decoded_len;
 	text *result;                 /* function result, text representation of digest */
@@ -595,23 +598,25 @@ text *argon2_internal_libargon2(const char *magic,
 	 * Taken from
 	 * https://github.com/P-H-C/phc-winner-argon2
 	 */
-	argon2_context context = {
-			hash,  /* output array, at least HASHLEN in size */
-			size, /* digest length */
-			(uint8_t *)pw, /* password array */
-			strlen(pw), /* password length */
-			salt_decoded,  /* salt array */
-			strlen((char *)salt_decoded), /* salt length */
-			NULL, 0, /* optional secret data */
-			NULL, 0, /* optional associated data */
-			rounds, memcost, threads, lanes,
-			argon2_version, /* algorithm version */
-			NULL, NULL, /* custom memory allocation / deallocation functions */
-			/* by default only internal memory is cleared (pwd is not wiped) */
-			ARGON2_DEFAULT_FLAGS
-	};
-
-	//argon2i_hash_raw(rounds, memcost, threads, pwd, pwdlen, salt, SALTLEN, hash, size);
+	context.out    = hash;  /* output array, at least HASHLEN in size */
+	context.outlen = size; /* digest length */
+	context.pwd    = (uint8_t *)pw; /* password array */
+	context.pwdlen = strlen(pw); /* password length */
+	context.salt   = salt_decoded;  /* salt array */
+	context.saltlen = strlen((char *)salt_decoded); /* salt length */
+	context.secret  = NULL;
+	context.secretlen = 0;  /* optional secret data */
+	context.ad        =	NULL;
+	context.adlen     = 0; /* optional associated data */
+	context.t_cost    =	rounds;
+	context.m_cost    = memcost;
+	context.lanes     = lanes;
+	context.threads   = threads;
+	context.version   = argon2_version; /* algorithm version */
+	context.allocate_cbk = NULL;
+	context.free_cbk     = NULL; /* custom memory allocation / deallocation functions */
+	/* by default only internal memory is cleared (pwd is not wiped) */
+	context.flags        = ARGON2_DEFAULT_FLAGS;
 
 	/* Create argon2 hash context */
 	if (strncmp(magic, "ARGON2ID", 8) == 0)
@@ -693,7 +698,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 {
 	EVP_KDF *ossl_kdf         = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
-	unsigned char output[size + 1];
+	unsigned char *output;
 	OSSL_PARAM parameters[8];
 	OSSL_PARAM *ptr;
 
@@ -702,7 +707,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 	int            salt_decoded_len;
 
 	/* Some initialization */
-	memset(output, '\0', size + 1);
+	output = palloc0(size + 1);
 
 	/*
 	 * Decode base64 salt string first.
@@ -756,7 +761,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 		goto err;
 	}
 
-	if (EVP_KDF_derive(ossl_kdf_ctx, &output[0], size, parameters) != 1)
+	if (EVP_KDF_derive(ossl_kdf_ctx, output, size, parameters) != 1)
 	{
 		goto err;
 	}
@@ -908,11 +913,10 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	{
 		/* extract the version number requested */
 		char *v_ptr = salt_cstr + pinfo.magic_len;
-		char  version_buf[pinfo.algo_info_len + 1];
+		char *version_buf = (char *) palloc0(pinfo.algo_info_len + 1);
 		char *sep;
 
 		/* copy over the version string, but without the trailing $ . */
-		memset(version_buf, '\0', pinfo.algo_info_len + 1);
 		memcpy(version_buf, v_ptr, pinfo.algo_info_len - 1);
 
 		sep = strchr(version_buf, '=');
@@ -932,6 +936,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 						   argon2_version),
 					errhint("Supported versions are 16 and 19(default)"));
 		}
+
+		pfree(version_buf);
 	}
 
 	/* Handle options, if extracted by salt parser */

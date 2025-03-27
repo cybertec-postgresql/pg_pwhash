@@ -68,4 +68,10 @@ size_t
 makeOptions(char *opt_str, size_t opt_len,
 			Datum **options, size_t *num_parsed_opts, size_t num_expected);
 
+/*
+ * Returns the currently selected magic string to identify scrypt hashes.
+ * This is configured by the GUC pgxcrypto.scrypt_magic.
+ */
+char * pgxcrypto_scrypt_magic_ident(void);
+
 #endif
