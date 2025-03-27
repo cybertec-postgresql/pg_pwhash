@@ -295,6 +295,16 @@ _scrypt_apply_options(Datum *options,
 			}
 
 		}
+		else
+		{
+			/*
+			 * Currently we always expect key=value notations in the options
+			 * string, so throw an error at this point.
+			 */
+			ereport(ERROR,
+					errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("bogus option specified in salt"));
+		}
 	}
 }
 
@@ -367,6 +377,14 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 
 	simple_salt_parser_init(&pinfo, scrypt_options, NUM_SCRYPT_OPTIONS);
 	simple_salt_parser(&pinfo, salt_buf);
+
+	/* We require options and salt section at least for scrypt */
+	if (pinfo.num_sect < 2){
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("salt string does not have required settings or format"),
+				errhint("The required format is \"$scrypt$ln=x,r=x,p=x$<salt>$\""));
+	}
 
 	/* Extract options via parsed information */
 	if (pinfo.opt_len > 0)
