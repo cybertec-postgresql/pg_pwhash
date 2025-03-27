@@ -601,7 +601,7 @@ text *argon2_internal_libargon2(const char *magic,
 			(uint8_t *)pw, /* password array */
 			strlen(pw), /* password length */
 			salt_decoded,  /* salt array */
-			salt_decoded_len, /* salt length */
+			strlen((char *)salt_decoded), /* salt length */
 			NULL, 0, /* optional secret data */
 			NULL, 0, /* optional associated data */
 			rounds, memcost, threads, lanes,
@@ -740,7 +740,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 									   (unsigned int *)&argon2_version);
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_SALT,
 											   (void *)salt_decoded,
-											   salt_decoded_len);
+											   strlen((char *)salt_decoded));
 	*ptr++ = OSSL_PARAM_construct_octet_string(OSSL_KDF_PARAM_PASSWORD,
 											   (void *)pw,
 											   strlen ((const char * )pw));
