@@ -1,5 +1,5 @@
-comment = 'pgxcrypto_poc - A POC implementation based on OpenSSL for ECP_PKEY_SCRYPT'
+comment = 'pgxcrypto_poc - An extension for advanced password hashing'
 default_version = '1.0'
 module_pathname = '$libdir/pgxcrypto_poc'
 relocatable = true
-requires = 'pgcrypto'
+
