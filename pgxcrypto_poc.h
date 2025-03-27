@@ -37,7 +37,6 @@ struct parse_salt_info
 	size_t   opt_len;
 	size_t num_parse_options;
 	struct pgxcrypto_option *options;
-
 };
 
 void
