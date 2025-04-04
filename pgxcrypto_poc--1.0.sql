@@ -17,3 +17,8 @@ CREATE OR REPLACE FUNCTION pgxcrypto_gen_salt(text, VARIADIC text[] DEFAULT '{}'
     RETURNS text
 AS 'MODULE_PATHNAME', 'xgen_salt'
     LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
+
+CREATE OR REPLACE FUNCTION pgxcrypto_scrypt_crypt(text, text)
+    RETURNS text
+AS 'MODULE_PATHNAME', 'pgxcrypto_scrypt_crypt'
+    LANGUAGE C VOLATILE STRICT PARALLEL RESTRICTED ;
