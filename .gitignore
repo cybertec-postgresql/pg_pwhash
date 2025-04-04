@@ -1,0 +1,12 @@
+.deps
+test/crypt_gensalt_scrypt
+**/*~
+**/.*~
+**/*.*~
+**/*.bc
+**/*.o
+**/*.diffs
+**/*.so
+regression.out
+results
+**/#*.*#
