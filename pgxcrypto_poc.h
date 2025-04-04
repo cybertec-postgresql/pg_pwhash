@@ -1,6 +1,19 @@
 #ifndef PGXCRYPTO_POC_PGXCRYPTO_POC_H
 #define PGXCRYPTO_POC_PGXCRYPTO_POC_H
 
+/*
+ * Backend type to use for Argon2, currently
+ *
+ * - OpenSSL
+ * - libargon2
+ *
+ * are supported
+ */
+typedef enum {
+	ARGON2_BACKEND_TYPE_OSSL,
+	ARGON2_BACKEND_TYPE_LIBARGON2,
+  } argon2_digest_backend_t;
+
 struct pgxcrypto_option
 {
 	char *name;     /* name of the option, as specified by salt function */
@@ -68,10 +81,9 @@ size_t
 makeOptions(char *opt_str, size_t opt_len,
 			Datum **options, size_t *num_parsed_opts, size_t num_expected);
 
-/*
- * Returns the currently selected magic string to identify scrypt hashes.
- * This is configured by the GUC pgxcrypto.scrypt_magic.
+/**
+ * Returns the current setting for the default argon2 hashing backend.
  */
-char * pgxcrypto_scrypt_magic_ident(void);
+argon2_digest_backend_t pgxcrypto_get_digest_backend(void);
 
 #endif

@@ -118,19 +118,6 @@ typedef enum
 } argon2_output_format_t;
 
 /*
- * Backend type to use for Argon2, currently
- *
- * - OpenSSL
- * - libargon2
- *
- * are supported
- */
-typedef enum {
-  ARGON2_BACKEND_TYPE_OSSL,
-  ARGON2_BACKEND_TYPE_LIBARGON2,
-} argon2_digest_backend_t;
-
-/*
  * Recommended tag length is 256 bits, see
  *
  * https://docs.openssl.org/3.2/man7/EVP_KDF-ARGON2/#description
@@ -162,6 +149,7 @@ static struct pgxcrypto_option argon2_options[] =
 		/* Specific parameters to pgxcrypto */
 		{ "output_format", "output_format", -1, -1,
 		  INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
+		/* Default backend should be kept in sync with the GUC pgxcrypto.argon2_backend */
 		{ "backend", "backend", INT4OID, -1, -1,
 		  { ._int_value = ARGON2_BACKEND_TYPE_OSSL } }
 };
@@ -182,8 +170,9 @@ void _argon2_apply_options(Datum *options,
 						   int   *memory_cost,
 						   int   *rounds,
 						   int   *size,
-						   argon2_output_format_t *output_format,
-						   argon2_digest_backend_t *backend);
+						   argon2_output_format_t  *output_format,
+						   argon2_digest_backend_t *backend,
+						   bool                    *explicit_backend_option);
 
 /* *********************** Implementation *********************** */
 
@@ -196,7 +185,8 @@ void _argon2_apply_options(Datum *options,
 						   int   *rounds,
 						   int   *size,
 						   argon2_output_format_t  *output_format,
-						   argon2_digest_backend_t *backend)
+						   argon2_digest_backend_t *backend,
+						   bool                    *explicit_backend_option)
 {
 	int i;
 
@@ -207,8 +197,9 @@ void _argon2_apply_options(Datum *options,
 	*rounds      = ARGON2_ROUNDS;
 	*size        = ARGON2_HASH_LEN;
 
-	*output_format = ARGON2_OUTPUT_BASE64;
-	*backend       = ARGON2_BACKEND_TYPE_OSSL;
+	*output_format           = ARGON2_OUTPUT_BASE64;
+	*backend                 = pgxcrypto_get_digest_backend();
+	*explicit_backend_option = false;
 
 	for (i = 0; i < numoptions; i++)
 	{
@@ -335,40 +326,42 @@ void _argon2_apply_options(Datum *options,
 						*output_format = ARGON2_OUTPUT_BASE64;
 						continue;
 					}
-					else if (strncmp(sep, "hex", 3) == 0)
+					if (strncmp(sep, "hex", 3) == 0)
 					{
 						*output_format = ARGON2_OUTPUT_HEX;
 						continue;
 					}
-					else
-					{
-						ereport(ERROR,
-								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								errmsg("invalid value for parameter \"output_format\": \"%s\"",
-									   sep));
-					}
+
+					/* Only reached in case of unknown output format */
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("invalid value for parameter \"output_format\": \"%s\"",
+									sep));
 				}
 
 				if ((strncmp(opt->name, "backend", strlen(opt->alias)) == 0)
 					|| (strncmp(opt->alias, "backend", strlen(opt->alias))) == 0)
 				{
+					/* Backend option was explicitely requested, make sure we remember */
+					*explicit_backend_option = true;
+
 					if (strncmp(sep, "openssl", 7) == 0)
 					{
 						*backend = ARGON2_BACKEND_TYPE_OSSL;
 						continue;
 					}
-					else if (strncmp(sep, "libargon2", 9) == 0)
+
+					if (strncmp(sep, "libargon2", 9) == 0)
 					{
 						*backend = ARGON2_BACKEND_TYPE_LIBARGON2;
 						continue;
 					}
-					else
-					{
-						ereport(ERROR,
-								errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-								errmsg("unsupported backend type \"%s\"",
-									   sep));
-					}
+
+					/* Only reached in case of unknown backend type */
+					ereport(ERROR,
+							errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+							errmsg("unsupported backend type \"%s\"",
+								   sep));
 				}
 			}
 
@@ -413,6 +406,7 @@ xgen_salt_argon_internal(Datum *options,
 	int size;
 	argon2_output_format_t  output_format;
 	argon2_digest_backend_t backend;
+	bool explicit_backend_option;
 
 	_argon2_apply_options(options,
 						  numoptions,
@@ -422,7 +416,8 @@ xgen_salt_argon_internal(Datum *options,
 						  &rounds,
 						  &size,
 						  &output_format,
-						  &backend);
+						  &backend,
+						  &explicit_backend_option);
 
 	/*
 	 * NOTE: The option string for argon2 has the following format:
@@ -473,6 +468,17 @@ xgen_salt_argon_internal(Datum *options,
 			appendStringInfoCharMacro(result, ',');
 
 		appendStringInfo(result, "size=%d", size);
+		need_sep = true;
+	}
+
+	if (explicit_backend_option)
+	{
+		char *backend_str = (backend == ARGON2_BACKEND_TYPE_OSSL ? "openssl" : "libargon2");
+
+		if (need_sep)
+			appendStringInfoCharMacro(result, ',');
+
+		appendStringInfo(result, "backend=%s", backend_str);
 		need_sep = true;
 	}
 
@@ -650,8 +656,6 @@ text *argon2_internal_libargon2(const char *magic,
 
 			resb64 = pgxcrypto_to_base64(hash, size);
 			encoded_size = strlen(resb64);
-
-			elog(NOTICE, "base64 length %lu", encoded_size);
 
 			result = (text *) palloc(encoded_size + VARHDRSZ);
 			SET_VARSIZE(result, encoded_size + VARHDRSZ);
@@ -841,6 +845,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	int size;
 	argon2_output_format_t  output_format;
 	argon2_digest_backend_t backend;
+	bool                    explicit_backend_option;
 
 	password = PG_GETARG_TEXT_PP(0);
 	salt = PG_GETARG_TEXT_PP(1);
@@ -986,7 +991,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 	_argon2_apply_options(options, numoptions,
 						  &threads, &lanes, &memcost, &rounds, &size,
-						  &output_format, &backend);
+						  &output_format, &backend, &explicit_backend_option);
 
 	/* Calculate the password hash */
 	elog(DEBUG2, "hashing password with Argon2 method \"%s\"",
@@ -995,6 +1000,8 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	switch(backend)
 	{
 		case ARGON2_BACKEND_TYPE_OSSL:
+		{
+			elog(DEBUG2, "using openssl backend for argon2 hashing");
 			hash = argon2_internal_ossl(ossl_argon2_name,
 										pw_cstr,
 										salt_buf,
@@ -1006,9 +1013,10 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 										output_format,
 										argon2_version);
 			break;
-
+		}
 		case ARGON2_BACKEND_TYPE_LIBARGON2:
 		{
+			elog(DEBUG2, "using libargon2 backend for argon2 hashing");
 			hash = argon2_internal_libargon2(ossl_argon2_name,
 											 pw_cstr,
 											 salt_buf,
@@ -1053,6 +1061,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 						 text_to_cstring(hash));
 	}
 
+	pfree(hash);
 	result = (text *) palloc(resbuf->len + VARHDRSZ);
 	SET_VARSIZE(result, resbuf->len + VARHDRSZ);
 	memcpy(VARDATA(result), resbuf->data, resbuf->len);

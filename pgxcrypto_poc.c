@@ -14,30 +14,15 @@ PG_FUNCTION_INFO_V1(pgxcrypto_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
 
-typedef enum  scrypt_magic_bytes_t {
-	PGXCRYPTO_SCRYPT_CRYPT_IDENT,
-	PGXCRYPTO_SCRYPT_GENERIC_IDENT
-} scrypt_magic_byte_t;
-
-static const struct config_enum_entry scrypt_magic_option[] = {
-		{ "$7$", PGXCRYPTO_SCRYPT_CRYPT_IDENT, false },
-		{ "$scrypt$", PGXCRYPTO_SCRYPT_GENERIC_IDENT, false },
-		{ NULL, 0, false }
-};
-
-/*
+/**
  * Enables/disable padding of base64 encoded strings.
  */
-static bool pgxcrypto_setting_always_pad_base64 = true;
+static bool pgxcrypto_setting_always_pad_base64 = false;
 
-/*
- * Defines the magic byte to use to identify scrypt hashes.
- * Currently "$7$" and "$scrypt$" are supported.
- *
- * "$7$" is explicit forced when using the crypt() backend for hashing.
- * See pgxcrypto_scrypt() for details.
+/**
+ * Default argon2 backend to use for hashing.
  */
-static int scrypt_magic_byte_enum = PGXCRYPTO_SCRYPT_GENERIC_IDENT;
+static int argon2_backend = ARGON2_BACKEND_TYPE_OSSL;
 
 struct pgxcrypto_magic
 {
@@ -48,34 +33,19 @@ struct pgxcrypto_magic
 
 static struct pgxcrypto_magic pgxcrpyto_algo[] =
 {
-	{ "scrypt", "$7$", xgen_salt_scrypt },
+	{ "scrypt", "$scrypt$", xgen_salt_scrypt },
+	{ "$7$", "$7$", xgen_crypt_gensalt_scrypt },
 	{ "argon2id", "$argon2id$", xgen_salt_argon2 },
 	{ "argon2d", "$argon2d$", xgen_salt_argon2 },
 	{ "argon2i", "$argon2i$", xgen_salt_argon2 },
 	{ NULL, NULL, NULL }
 };
 
-/*
- * Returns the magic identifier for scrypt (determined by the current
- * GUC setting pgxcrypto.scrypt_magic)
- */
-char * pgxcrypto_scrypt_magic_ident(void)
-{
-	char *result;
-
-	switch(scrypt_magic_byte_enum)
-	{
-		case (PGXCRYPTO_SCRYPT_GENERIC_IDENT):
-			result= "$scrypt$";
-			break;
-
-		case (PGXCRYPTO_SCRYPT_CRYPT_IDENT):
-			result = "$7$";
-			break;
-	}
-
-	return result;
-}
+static const struct config_enum_entry pgxcrypto_argon2_backend_option[] = {
+	{ "openssl", ARGON2_BACKEND_TYPE_OSSL, false },
+	{ "libargon2", ARGON2_BACKEND_TYPE_LIBARGON2, false },
+	{ NULL, 0, false }
+};
 
 /*
  * Unpads a given base64 string.
@@ -556,30 +526,36 @@ xgen_salt(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
+argon2_digest_backend_t pgxcrypto_get_digest_backend(void)
+{
+	return argon2_backend;
+}
+
 void
 _PG_init(void)
 {
+	DefineCustomEnumVariable("pgxcrypto.argon2_default_backend",
+						 "Selects the default backend to use for argon2 hashing",
+						 NULL,
+						 &argon2_backend,
+						 ARGON2_BACKEND_TYPE_OSSL,
+						 pgxcrypto_argon2_backend_option,
+						 PGC_USERSET,
+						 0,
+						 NULL,
+						 NULL,
+						 NULL);
+
 	DefineCustomBoolVariable("pgxcrypto.always_pad_base64",
 							 "Forces base64 output to be padded, the default is on",
 							 NULL,
 							 &pgxcrypto_setting_always_pad_base64,
-							 true,
+							 false,
 							 PGC_USERSET,
 							 0,
 							 NULL,
 							 NULL,
 							 NULL);
 
-	DefineCustomEnumVariable("pgxcrypto.scrypt_magic",
-							 "Selects the magic byte to use to identify scrypt hashes",
-							 NULL,
-							 &scrypt_magic_byte_enum,
-							 PGXCRYPTO_SCRYPT_GENERIC_IDENT,
-							 scrypt_magic_option,
-							 PGC_USERSET,
-							 0,
-							 NULL,
-							 NULL,
-							 NULL);
 
 }
