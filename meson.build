@@ -54,12 +54,12 @@ pg_regress = find_program('pg_regress',
                           dirs: [pkglibdir / 'pgxs/src/test/regress']
                          )
 
-regress_tests = [ 'pgxcrypto.sql' ]
+regress_tests = [ 'pgxcrypto' ]
 
 test('regress',
      pg_regress,
      args: ['--bindir', bindir,
-            '--inputdir', meson.current_source_dir() / 'test',
+            '--inputdir', meson.current_source_dir(),
            ] + regress_tests,
     )
 
