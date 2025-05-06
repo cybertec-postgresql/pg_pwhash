@@ -9,7 +9,6 @@
 
 #include "catalog/pg_type_d.h"
 #include "utils/builtins.h"
-#include "utils/array.h"
 #include "varatt.h"
 
 #include "libscrypt.h"
@@ -200,17 +199,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 
 /**
  * Returns an valid StringInfo string buffer with a fully
- * initialized salt string.
- *
- * The format is influenced by the requested backend, which is as follows:
- *
- * openssl/libscrypt
- *
- * <magic string>$ln=<compute factor>,r=<block size>,p=<parallelism>$<salt>$
- *
- * crypt:
- *
- * <magic string>$rounds=<compute factor>$<salt>$
+ * initialized salt string with the following format:
  *
  * @param rounds Compute factor
  * @param block_size Block size for hashing
@@ -379,8 +368,8 @@ _scrypt_apply_crypt_options(Datum *options,
 			struct pgxcrypto_option *opt;
 			*sep++ = '\0';
 			opt = check_option(str,
-							   scrypt_options,
-							   NUM_SCRYPT_OPTIONS,
+							   scrypt_crypt_options,
+							   NUM_SCRYPT_CRYPT_OPTIONS,
 							   true);
 
 			if (opt != NULL)
