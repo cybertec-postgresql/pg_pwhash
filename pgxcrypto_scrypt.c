@@ -118,6 +118,8 @@ static struct pgxcrypto_option scrypt_crypt_options[] =
 };
 
 /* Forwarded declarations */
+PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
+PG_FUNCTION_INFO_V1(pgxcrypto_scrypt_crypt);
 
 static void
 _scrypt_apply_options(Datum *options,
@@ -150,9 +152,6 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 						struct pgxcrypto_option *options,
 						const char *magic_string,
 						size_t numoptions);
-
-PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
-PG_FUNCTION_INFO_V1(pgxcrypto_scrypt_crypt);
 
 /* ******************** Implementation starts here ******************** */
 
@@ -582,7 +581,7 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 
 /**
  * pg_scrypt_libscrypt() generates a scrypt password hash based
- * on libscrypt.
+ * on libscrypt of openssl.
  *
  * See https://github.com/technion/libscrypt/tree/master for more details.
  */
@@ -709,12 +708,6 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 		}
 	}
 
-
-	/*
-	 * Build final hash string
-	 */
-	resbuf = makeStringInfo();
-
 	/*
 	 * An scrypt password hash string has the following format:
 	 *
@@ -820,4 +813,16 @@ scrypt_openssl_internal(const char *pw,
 	/* ..and we're done */
 	return output_b64;
 
+}
+
+Datum
+xcrypt_scrypt(Datum password, Datum salt)
+{
+	return DirectFunctionCall2(pgxcrypto_scrypt, password, salt);
+}
+
+Datum
+xcrypt_scrypt_crypt(Datum password, Datum salt)
+{
+	return DirectFunctionCall2(pgxcrypto_scrypt_crypt, password, salt);
 }

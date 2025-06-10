@@ -1,5 +1,5 @@
-.deps
-test/crypt_gensalt_scrypt
+.deps/*
+test/crypt_gensalt_*
 **/*~
 **/.*~
 **/*.*~
@@ -8,5 +8,5 @@ test/crypt_gensalt_scrypt
 **/*.diffs
 **/*.so
 regression.out
-results
+results/*
 **/#*.*#

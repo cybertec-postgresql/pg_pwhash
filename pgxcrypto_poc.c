@@ -9,10 +9,13 @@
 #include "pgxcrypto_poc.h"
 #include "pgxcrypto_scrypt.h"
 #include "pgxcrypto_argon2.h"
+#include "pgxcrypto_yescrypt.h"
 
 PG_FUNCTION_INFO_V1(pgxcrypto_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
+PG_FUNCTION_INFO_V1(xcrypt);
+
 
 /**
  * Enables/disable padding of base64 encoded strings.
@@ -29,15 +32,17 @@ struct pgxcrypto_magic
   char *name;
   char *magic;
   StringInfo (*gen) (Datum *, int, const char *);
+  Datum (*crypt) (Datum pw, Datum salt);
 };
 
-static struct pgxcrypto_magic pgxcrpyto_algo[] =
+static struct pgxcrypto_magic pgxcrypto_algo[] =
 {
-	{ "scrypt", "$scrypt$", xgen_salt_scrypt },
-	{ "$7$", "$7$", xgen_crypt_gensalt_scrypt },
-	{ "argon2id", "$argon2id$", xgen_salt_argon2 },
-	{ "argon2d", "$argon2d$", xgen_salt_argon2 },
-	{ "argon2i", "$argon2i$", xgen_salt_argon2 },
+	{ "scrypt", "$scrypt$", xgen_salt_scrypt, xcrypt_scrypt },
+	{ "$7$", "$7$", xgen_crypt_gensalt_scrypt, xcrypt_scrypt_crypt },
+	{ "argon2id", "$argon2id$", xgen_salt_argon2, xcrypt_argon2 },
+	{ "argon2d", "$argon2d$", xgen_salt_argon2, xcrypt_argon2 },
+	{ "argon2i", "$argon2i$", xgen_salt_argon2, xcrypt_argon2 },
+	{ "yescrypt", "$y$", xgen_salt_yescrypt, xcrypt_yescrypt_crypt },
 	{ NULL, NULL, NULL }
 };
 
@@ -472,6 +477,63 @@ pgxcrypto_test_options(PG_FUNCTION_ARGS)
 }
 
 Datum
+xcrypt(PG_FUNCTION_ARGS)
+{
+	text *salt     = PG_GETARG_TEXT_PP(1);
+	struct pgxcrypto_magic *algo;
+	char *salt_cstr;
+
+	if (PG_ARGISNULL(0))
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("password cannot be NULL"));
+	}
+
+	if (PG_ARGISNULL(1))
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("salt string cannot be NULL"));
+	}
+
+	salt_cstr = text_to_cstring(salt);
+
+	/*
+	 * Salt string should have magic byte and a length of at least 3 bytes, otherwise
+	 * it is meaningless
+	 */
+	if (strlen(salt_cstr) < 3)
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("salt string too short"));
+	}
+
+	/*
+	 * Loop through available algorithms and check if we have a function
+	 * available identified by the magic string
+	 */
+	algo = pgxcrypto_algo;
+
+	while (algo->magic != NULL)
+	{
+		if (strncmp(algo->magic, salt_cstr, strlen(algo->magic)) == 0)
+		{
+			elog(DEBUG2, "magic salt %s", algo->magic);
+			PG_RETURN_DATUM(algo->crypt( PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+		}
+
+		algo++;
+	}
+
+	/* If we land here, no suitable algorithm was found */
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("could not determine algorithm from given salt string"));
+}
+
+Datum
 xgen_salt(PG_FUNCTION_ARGS)
 {
 	text *crypt_opt      = PG_GETARG_TEXT_PP(0);
@@ -491,7 +553,7 @@ xgen_salt(PG_FUNCTION_ARGS)
 	/*
 	 * First argument is the requested algorithm
 	 */
-	magic = pgxcrpyto_algo;
+	magic = pgxcrypto_algo;
 
 	while (magic->name != NULL)
 	{

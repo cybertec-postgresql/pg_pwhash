@@ -1068,3 +1068,9 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(result);
 }
+
+Datum
+xcrypt_argon2(Datum password, Datum salt)
+{
+	return DirectFunctionCall2(pgxcrypto_argon2, password, salt);
+}

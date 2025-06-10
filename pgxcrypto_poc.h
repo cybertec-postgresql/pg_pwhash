@@ -1,6 +1,8 @@
 #ifndef PGXCRYPTO_POC_PGXCRYPTO_POC_H
 #define PGXCRYPTO_POC_PGXCRYPTO_POC_H
 
+#include "fmgr.h"
+
 /*
  * Backend type to use for Argon2, currently
  *

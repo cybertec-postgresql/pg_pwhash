@@ -20,8 +20,8 @@ pgxcrypto_libm_dep = cc.find_library('m')
 # need libcrypt
 pgxcrypto_crypt_dep = cc.find_library('crypt')
 
-shared_module('pgxcrypto_poc', 'pgxcrypto_poc.c',
-              'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',
+shared_module('pgxcrypto_poc',
+              'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',  'pgxcrypto_poc.c',
               include_directories: [includedir_server],
               install: true,
               install_dir: pkglibdir,
