@@ -571,6 +571,17 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 				errmsg("could not create password hash via crypt()"));
 	}
 
+	/*
+	 * According to crypt(3) documentation, implementations of crypt() might return an
+	 * invalid hash starting with '*'. So check for this, too.
+	 */
+	if (hash[0] == '*')
+	{
+		ereport(ERROR,
+				errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("error creating password hash with crypt()"));
+	}
+
 	/* Everything seems ok, prepare result Datum */
 	result = (text *)palloc(VARHDRSZ + strlen(hash));
 	SET_VARSIZE(result, VARHDRSZ + strlen(hash));
