@@ -1,4 +1,4 @@
-CREATE EXTENSION pgxcrypto_poc;
+CREATE EXTENSION pgxcrypto_pwhash;
 
 --
 -- Try settings for pgxcrypto.argon2_default_backend
@@ -270,3 +270,36 @@ SELECT pgxcrypto_scrypt_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$
 
 -- Should fail, obscure salt
 SELECT pgxcrypto_scrypt_crypt('password', '$7$abcdefghijkl');
+
+-- -------------------------------------------------------------------------------------------------
+-- Checks for yescrypt hashing
+--
+-- Currently this is supported on platforms with advanced libxcrypt support only (Linux, BSD).
+-- So checks might fail in case support wasn't available during compilation of the extension
+-- -------------------------------------------------------------------------------------------------
+
+--
+-- Compare hashes derived via test/crypt_gensalt_yescrypt password '$y$jAT$ymqO.hmB133abiOGZqA4f/'
+-- (parameter rounds=6)
+--
+SELECT pgxcrypto_yescrypt_crypt('password', '$y$jAT$ymqO.hmB133abiOGZqA4f/') = '$y$jAT$ymqO.hmB133abiOGZqA4f/$ff0GrluBLpVssGRjSIYMUG2E7JWH722mSyalZT3o3E3';
+
+-- Following tests should fail
+-- Note: We need lc_messages set to C, otherwise we get localized errors from libxcrypt
+SET lc_messages TO 'C';
+SELECT pgxcrypto_yescrypt_crypt('password', '$y$');
+SELECT pgxcrypto_yescrypt_crypt('password', '$y$$');
+SELECT pgxcrypto_yescrypt_crypt('password', '');
+RESET lc_messages;
+
+----------------------------------------------------------
+-- Test generating yescrypt hashes with pgxcrypto_gen_salt()
+----------------------------------------------------------
+
+CREATE TABLE pgxcrypto_test_yescrypt(pw text NOT NULL, salt text NOT NULL, hash text);
+INSERT INTO pgxcrypto_test_yescrypt(pw, salt) VALUES('password', pgxcrypto_gen_salt('yescrypt', 'rounds=3'));
+UPDATE pgxcrypto_test_yescrypt SET hash = pgxcrypto_yescrypt_crypt('password', salt) WHERE pw = 'password';
+
+SELECT hash = pgxcrypto_yescrypt_crypt(pw, salt) FROM pgxcrypto_test_yescrypt;
+
+DROP TABLE pgxcrypto_test_yescrypt;
