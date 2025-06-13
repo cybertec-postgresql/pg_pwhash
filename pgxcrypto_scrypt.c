@@ -189,6 +189,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 	pinfo->algo_info_len = 0;
 	pinfo->salt_len_min  = SCRYPT_SALT_MAX_LEN / 4;
 	pinfo->salt          = NULL;
+	pinfo->salt_len      = 0;
 	pinfo->opt_str       = NULL;
 	pinfo->num_sect      = 0;
 	pinfo->opt_len       = 0;
@@ -637,7 +638,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	simple_salt_parser(&pinfo, salt_buf);
 
 	/* We require options and salt section at least for scrypt */
-	if (pinfo.num_sect < 2){
+	if (pinfo.salt_len <= 0) {
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("salt string does not have required settings or format"));
@@ -666,23 +667,15 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	}
 
 	/* Extract the plain salt string from hash input string */
-	if (pinfo.salt_len > 0)
-	{
-		salt_parsed = (char *)palloc0(pinfo.salt_len + 1);
-		memcpy(salt_parsed, pinfo.salt, pinfo.salt_len);
+	salt_parsed = (char *)palloc0(pinfo.salt_len + 1);
+	memcpy(salt_parsed, pinfo.salt, pinfo.salt_len);
 
-		elog(DEBUG2, "parsed salt: \"%s\"", salt_parsed);
-		salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
-													 (int)(pinfo.salt_len),
-													 &salt_decoded_len);
-	}
-	else
-	{
-		salt_decoded = "\0";
-		salt_parsed  = "\0";
-	}
+	elog(DEBUG2, "parsed salt: \"%s\"", salt_parsed);
+	salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
+												 (int)(pinfo.salt_len),
+												 &salt_decoded_len);
 
-	/* Sanity check, salt must not be null */
+	/* Sanity check, salt must not be null. Should not happen ... */
 	if (salt_decoded == NULL)
 	{
 		elog(ERROR, "salt cannot be undefined");

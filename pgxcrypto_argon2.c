@@ -386,6 +386,7 @@ void simple_salt_parser_init(struct parse_salt_info *pinfo,
 
 	pinfo->salt_len_min = ARGON2_SALT_MAX_LEN / 4;
 	pinfo->salt         = NULL;
+	pinfo->salt_len     = 0;
 	pinfo->opt_str      = NULL;
 	pinfo->num_sect     = 0;
 	pinfo->opt_len      = 0;
@@ -562,10 +563,9 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 	destroyStringInfo(buf);
 
 	/*
-	 * Not the generated salt string.
+	 * Now the generated salt string.
 	 */
-	appendStringInfoCharMacro(result, '$');
-	appendStringInfoString(result, salt_encoded);
+	appendStringInfo(result, "$%s$", salt_encoded);
 
 	/* and we're done */
 	return result;

@@ -350,6 +350,14 @@ simple_salt_parser(struct parse_salt_info *pinfo,
 		pinfo->salt = salt + pinfo->magic_len;
 		pinfo->salt_len = s_ptr - (pinfo->salt);
 	}
+	/*
+	 * Iff the salt wasn't closed with a trailing '$', we might have parsed the salt, but
+	 * not yet set the final length of it. So do it here at the final step of the parser.
+	 */
+	else if (pinfo->salt_len == 0)
+	{
+		pinfo->salt_len = strlen(pinfo->salt);
+	}
 
 }
 
@@ -521,7 +529,7 @@ xcrypt(PG_FUNCTION_ARGS)
 		if (strncmp(algo->magic, salt_cstr, strlen(algo->magic)) == 0)
 		{
 			elog(DEBUG2, "magic salt %s", algo->magic);
-			PG_RETURN_DATUM(algo->crypt( PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
+			PG_RETURN_DATUM(algo->crypt(PG_GETARG_DATUM(0), PG_GETARG_DATUM(1)));
 		}
 
 		algo++;
