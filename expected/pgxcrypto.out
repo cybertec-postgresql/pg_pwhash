@@ -409,7 +409,7 @@ SELECT pgxcrypto_scrypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU=$UrgkUooL3Hse
 SET pgxcrypto.always_pad_base64 TO off;
 -- should fail, options string not present
 SELECT pgxcrypto_scrypt('password', '$scrypt$MTIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00');
-ERROR:  salt string does not have required settings or format
+ERROR:  invalid option name: "MTIzNDU"
 -- should fail, obscure option specification
 SELECT pgxcrypto_scrypt('password', '$scrypt$M$TIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=');
 ERROR:  bogus option specified in salt
