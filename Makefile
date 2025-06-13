@@ -1,18 +1,18 @@
 PG_CONFIG ?= pg_config
-MODULE_big = pgxcrypto_poc
-OBJS = pgxcrypto_yescrypt.o pgxcrypto_argon2.o pgxcrypto_scrypt.o pgxcrypto_poc.o $(WIN32RES)
-PGFILEDESC = "pgxcrypto_poc - A POC implementation for advanced password hashing"
+MODULE_big = pgxcrypto_pwhash
+OBJS = pgxcrypto_yescrypt.o pgxcrypto_argon2.o pgxcrypto_scrypt.o pgxcrypto_pwhash.o $(WIN32RES)
+PGFILEDESC = "pgxcrypto_pwhash - An implementation for advanced password hashing"
 
-EXTENSION = pgxcrypto_poc
-DATA = pgxcrypto_poc--1.0.sql
-DOCS = pgxcrypto_poc.md
+EXTENSION = pgxcrypto_pwhash
+DATA = pgxcrypto_pwhash--1.0.sql
+DOCS = pgxcrypto_pwhash.md
 
 REGRESS = pgxcrypto
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-# Add libraries that pgxcrypto depends (or might depend) on into the
+# Add libraries that pgxcrypto_pwhash depends (or might depend) on into the
 # shared library link.  (The order in which you list them here doesn't
 # matter.)
 SHLIB_LINK += $(LIBS) -lcrypt -lscrypt -lm -lcrypto -lz -largon2

@@ -1,0 +1,5 @@
+comment = 'pgxcrypto_pwhash - An extension for advanced password hashing'
+default_version = '1.0'
+module_pathname = '$libdir/pgxcrypto_pwhash'
+relocatable = true
+

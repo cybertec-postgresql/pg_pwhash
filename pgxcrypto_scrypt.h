@@ -4,7 +4,7 @@
 #include "postgres.h"
 #include "fmgr.h"
 
-#include "pgxcrypto_poc.h"
+#include "pgxcrypto_pwhash.h"
 
 StringInfo
 xgen_salt_scrypt(Datum *generator_options, int numoptions, const char *magic);

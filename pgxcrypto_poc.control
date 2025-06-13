@@ -1,5 +1,0 @@
-comment = 'pgxcrypto_poc - An extension for advanced password hashing'
-default_version = '1.0'
-module_pathname = '$libdir/pgxcrypto_poc'
-relocatable = true
-

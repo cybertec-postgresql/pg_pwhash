@@ -15,7 +15,7 @@
 
 #include "argon2.h"
 
-#include "pgxcrypto_poc.h"
+#include "pgxcrypto_pwhash.h"
 #include "pgxcrypto_argon2.h"
 
 /* Argon2 default option values */

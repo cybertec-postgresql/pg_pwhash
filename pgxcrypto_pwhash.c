@@ -6,7 +6,7 @@
 #include "utils/guc.h"
 #include "openssl/evp.h"
 
-#include "pgxcrypto_poc.h"
+#include "pgxcrypto_pwhash.h"
 #include "pgxcrypto_scrypt.h"
 #include "pgxcrypto_argon2.h"
 #include "pgxcrypto_yescrypt.h"

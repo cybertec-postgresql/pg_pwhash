@@ -1,11 +1,10 @@
 # Motivation
 
-This POC aims to showcase the implementation of `scrypt` and `argon2id` in
-PostgreSQL to provide an advanced password hashing algorithm.
+This extension adds advanced password hashing algorithms to PostgreSQL databases.
 
 # Requirements
 
-To build `pgxcrypto_poc` you need OpenSSL version >= `3.2` and `libscrypt` installed. Argon2 support
+To build `pgxcrypto_pwhash` you need OpenSSL version >= `3.2` and `libscrypt` installed. Argon2 support
 is additionally provided by the `libargon2` library backend, too.
 
 If you use meson to built the extension, then check the output, since `meson setup` will check 
@@ -35,20 +34,19 @@ If all prerequisites are as expected this will compile the extension and generat
 
 ```shell
 psql <YOUR_DB>
-CREATE EXTENSION pgxcrypto_poc;
+CREATE EXTENSION pgxcrypto_pwhash;
 ```
-
-At the moment `pgxcrypto_poc` requires `pgcrypto` to be installed, but this requirement will be
-be relaxed in the final version.
 
 # Features
 
-This extension currently implements advanced password hashing via `argon2id` and `scrypt` hashing 
-algorithms.
+This extension currently implements advanced password hashing via `argon2id`,  `argon2i`, `argon2d` 
+and `scrypt` hashing algorithms. Additionally  `pgxcrypto_pwhash` supports `yescrypt` by `libxcrypt`
+implementations, if available on the target platform. In the future a standalone implementation based on
+[https://github.com/openwall/yescrypt](https://github.com/openwall/yescrypt) will be added.
 
 ## Generating salts
 
-`pgxcrypto` features the `pgxcrpyto_gen_salt()` function with accepts the requested name of the
+`pgxcrypto` features the `pgxcrypto_gen_salt()` function with accepts the requested name of the
 password hash algorithm and a variadic list of options which should be passed to the specified
 algorithm. These options are specific to the requested algorithm, see the next chapter below.
 
