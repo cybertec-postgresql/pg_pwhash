@@ -1,6 +1,18 @@
-crypt_gensalt_yescrypt.o: crypt_gensalt_yescrypt.c
-	gcc -lcrypt crypt_gensalt_yescrypt.c -o crypt_gensalt_yescrypt
-crypt_gensalt_scrypt.o: crypt_gensalt_scrypt.c
-	gcc -lcrypt crypt_gensalt_scrypt.c -o crypt_gensalt_scrypt
+CC ?= cc
+CFLAGS = -Wall -Wextra
+LDFLAGS = -lcrypt
 
-all: crypt_gensalt_scrypt.o crypt_gensalt_yescrypt.o
+TARGETS = crypt_gensalt_yescrypt crypt_gensalt_scrypt
+
+all: $(TARGETS)
+
+crypt_gensalt_yescrypt: crypt_gensalt_yescrypt.c
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $@
+
+crypt_gensalt_scrypt: crypt_gensalt_scrypt.c
+	$(CC) $(CFLAGS) $< $(LDFLAGS) -o $@
+
+clean:
+	rm -f $(TARGETS)
+
+.PHONY: all clean
