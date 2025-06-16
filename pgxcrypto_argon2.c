@@ -151,7 +151,7 @@ static struct pgxcrypto_option argon2_options[] =
 		  INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
 		/* Default backend should be kept in sync with the GUC pgxcrypto.argon2_backend */
 		{ "backend", "backend", INT4OID, -1, -1,
-		  { ._int_value = ARGON2_BACKEND_TYPE_OSSL } }
+		  { ._int_value = ARGON2_BACKEND_TYPE_LIBARGON2 } }
 };
 
 /* *********************** Forwarded declarations *********************** */
