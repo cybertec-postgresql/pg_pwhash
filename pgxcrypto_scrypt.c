@@ -46,7 +46,10 @@ PG_MODULE_MAGIC;
 /*
  * Max value for rounds
  *
- * 32 is the max allowed value here defined by python's passlib, too.
+ * NOTE:
+ *
+ * 32 is the max allowed value here defined by python's passlib, but it seems we cannot do more
+ * than currently 20 when using OpenSSL. libscrypt allows more, so be en par with python.
  */
 #define PGXCRYPTO_SCRYPT_MAX_ROUNDS 32
 
