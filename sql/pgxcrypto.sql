@@ -303,3 +303,57 @@ UPDATE pgxcrypto_test_yescrypt SET hash = pgxcrypto_yescrypt_crypt('password', s
 SELECT hash = pgxcrypto_yescrypt_crypt(pw, salt) FROM pgxcrypto_test_yescrypt;
 
 DROP TABLE pgxcrypto_test_yescrypt;
+
+-- ----------------------------------------------------
+-- Test crypt() compatible interface pgxcrypto_crypt()
+-- ----------------------------------------------------
+
+--
+-- scrypt via crypt()
+--
+SELECT pgxcrypto_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$') = '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/' AS hash;
+
+--
+-- scrypt via libscrypt
+--
+SELECT pgxcrypto_crypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo' AS hash;
+
+--
+-- scrypt via OpenSSL
+--
+SELECT pgxcrypto_crypt('password', '$scrypt$ln=16,r=8,p=1,backend=openssl$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo' AS hash;
+
+--
+-- yescrypt via crypt()
+--
+SELECT pgxcrypto_crypt('password', '$y$jAT$ymqO.hmB133abiOGZqA4f/') = '$y$jAT$ymqO.hmB133abiOGZqA4f/$ff0GrluBLpVssGRjSIYMUG2E7JWH722mSyalZT3o3E3' AS hash;
+
+--
+-- Argon2id via libargon2
+--
+SELECT pgxcrypto_crypt('password', '$argon2id$v=19$m=65536,t=3,p=4$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4') = '$argon2id$v=19$m=65536,t=3,p=4$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4' AS hash;
+
+--
+-- Argon2id with OpenSSL
+--
+SELECT pgxcrypto_crypt('password', '$argon2id$v=19$m=65536,t=3,p=4,backend=openssl$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4') = '$argon2id$v=19$m=65536,t=3,p=4,backend=openssl$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4' AS hash;
+
+--
+-- Argon2d with libargon2
+--
+SELECT pgxcrypto_crypt('password', '$argon2d$v=19$m=65536,t=3,p=4$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU') = '$argon2d$v=19$m=65536,t=3,p=4$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU' AS hash;
+
+--
+-- Argon2d with OpenSSL
+--
+SELECT pgxcrypto_crypt('password', '$argon2d$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU') = '$argon2d$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU' AS hash;
+
+--
+-- Argon2i with libargon2
+--
+SELECT pgxcrypto_crypt('password', '$argon2i$v=19$m=65536,t=3,p=4$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A') = '$argon2i$v=19$m=65536,t=3,p=4$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A' AS hash;
+
+--
+-- Argon2i with OpenSSL
+--
+SELECT pgxcrypto_crypt('password', '$argon2i$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A') = '$argon2i$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A' AS hash;
