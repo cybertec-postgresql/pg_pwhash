@@ -948,13 +948,6 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	/* Handle options, if extracted by salt parser */
 	if (pinfo.opt_len > 0)
 	{
-
-		if (pinfo.opt_len < 0)
-		{
-			/* should not happen */
-			elog(ERROR, "unexpected negative length of options string in salt");
-		}
-
 		options_buf = (char *) palloc(pinfo.opt_len + 1);
 		memset(options_buf, '\0', pinfo.opt_len + 1);
 		memcpy(options_buf, pinfo.opt_str, pinfo.opt_len);
@@ -967,7 +960,6 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 					&options,
 					&numoptions,
 					NUM_ARGON2_OPTIONS);
-
 	}
 
 	/* Extract plain salt string */
