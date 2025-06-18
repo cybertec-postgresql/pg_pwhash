@@ -8,15 +8,17 @@
 #include "utils/builtins.h"
 #include "varatt.h"
 
-#include "openssl/core_names.h"
-#include "openssl/params.h"
-#include "openssl/thread.h"
-#include "openssl/kdf.h"
-
 #include "argon2.h"
 
 #include "pgxcrypto_pwhash.h"
 #include "pgxcrypto_argon2.h"
+
+#ifdef _PGXCRYPTO_ARGON2_OSSL_SUPPORT
+#include "openssl/core_names.h"
+#include "openssl/params.h"
+#include "openssl/thread.h"
+#include "openssl/kdf.h"
+#endif
 
 /* Argon2 default option values */
 #define ARGON2_SALT_MAX_LEN 64
@@ -705,6 +707,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 						   argon2_output_format_t format,
 						   unsigned int argon2_version)
 {
+#ifdef 	_PGXCRYPTO_ARGON2_OSSL_SUPPORT
 	EVP_KDF     *ossl_kdf     = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
 	text        *result       = NULL;
@@ -823,6 +826,13 @@ err:
 	OSSL_set_max_threads(NULL, 0);
 
 	elog(ERROR, "creating argon2 password hash failed");
+#else
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("openssl backend not available in this version of pgxcrypto_pwhash"),
+			errhint("This requires OpenSSL version >= 3.2.0"));
+
+#endif
 }
 
 Datum
