@@ -615,7 +615,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	char *salt_parsed;
 	//char salt_parsed[SCRYPT_SALT_MAX_LEN + 1];
 	char *options_buf;
-	char *digest;
+	char *digest = NULL;
 	StringInfo resbuf; /* intermediate buffer to construct final password hash string */
 	text      *result; /* hash string to return */
 
@@ -713,6 +713,11 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 											 parallelism);
 			break;
 		}
+	}
+
+	if (unlikely(digest == NULL))
+	{
+		elog(ERROR, "unrecognized backend type");
 	}
 
 	/*

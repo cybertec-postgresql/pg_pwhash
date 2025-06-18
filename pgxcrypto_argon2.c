@@ -584,11 +584,11 @@ text *argon2_internal_libargon2(const char *magic,
 								unsigned int argon2_version)
 {
 	unsigned char *hash = palloc0(size);   /* result digest */
+	text *result        = NULL;            /* function result, text representation of digest */
 	argon2_context context;
 	unsigned char *salt_decoded;
 	int            salt_decoded_len;
-	text *result;                 /* function result, text representation of digest */
-	int rc;                       /* argon2 digest return code */
+	int rc;                                /* argon2 digest return code */
 
 	/*
 	 * Decode salt bytes from base64 first.
@@ -679,6 +679,11 @@ text *argon2_internal_libargon2(const char *magic,
 		}
 	}
 
+	if (unlikely(result == NULL))
+	{
+		elog(ERROR, "unrecognized output format");
+	}
+
 	return result;
 }
 
@@ -700,13 +705,14 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 						   argon2_output_format_t format,
 						   unsigned int argon2_version)
 {
-	EVP_KDF *ossl_kdf         = NULL;
+	EVP_KDF     *ossl_kdf     = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
-	unsigned char *output;
-	OSSL_PARAM parameters[8];
-	OSSL_PARAM *ptr;
+	text        *result       = NULL;
 
-	text *result;
+	unsigned char *output;
+	OSSL_PARAM     parameters[8];
+	OSSL_PARAM    *ptr;
+
 	unsigned char *salt_decoded;
 	int            salt_decoded_len;
 
@@ -804,6 +810,11 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 		}
 	}
 
+	if (unlikely(result == NULL))
+	{
+		elog(ERROR, "unrecognized output format");
+	}
+
 	return result;
 
 err:
@@ -819,6 +830,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 {
 	Datum *options = NULL;
 	size_t numoptions = 0;
+	text *hash        = NULL;
 
 	char *options_buf = NULL;
 	char *ossl_argon2_name = "ARGON2ID";
@@ -829,8 +841,7 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 	char salt_buf[ARGON2_SALT_MAX_LEN + 1];
 
 	StringInfo resbuf;
-	text *result;
-	text *hash;
+	text      *result;
 
 	text *password;
 	char *pw_cstr;
@@ -1031,6 +1042,10 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 		}
 	}
 
+	if (unlikely(hash == NULL))
+	{
+		elog(ERROR, "unrecognized backend type");
+	}
 
 	/*
 	 * Construct the output string. We need to consider

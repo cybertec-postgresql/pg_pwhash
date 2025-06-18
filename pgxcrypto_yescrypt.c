@@ -143,7 +143,7 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 				errmsg("could not create salt"));
 	}
 
-	appendStringInfo(result, (const char *)salt_buf);
+	appendStringInfoString(result, salt_buf);
 	return result;
 }
 
