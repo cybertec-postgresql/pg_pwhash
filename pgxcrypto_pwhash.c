@@ -608,7 +608,7 @@ _PG_init(void)
 						 "Selects the default backend to use for argon2 hashing",
 						 NULL,
 						 &argon2_backend,
-						 ARGON2_BACKEND_TYPE_OSSL,
+						 ARGON2_BACKEND_TYPE_LIBARGON2,
 						 pgxcrypto_argon2_backend_option,
 						 PGC_USERSET,
 						 0,

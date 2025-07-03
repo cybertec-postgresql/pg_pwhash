@@ -130,10 +130,10 @@ pgxcrypto_gen_salt
 `pgxcrypto` supports password hashing via Argon2 which is hashing algorithms `argon2i`, 
 `argon2d` and `argon2id`.
 
-Argon2 password hashing is implemented via [OpenSSL](https://docs.openssl.org/3.
-2/man7/EVP_KDF-ARGON2/) and [RFC9106](https://www.rfc-editor.org/rfc/rfc9106.html#name-argon2-algorithm). To compile 
-`pgxcrypto`, you need at least OpenSSL 3.2. Currently this is only shipped on selected 
-distributions.
+Argon2 password hashing is implemented via [OpenSSL](https://docs.openssl.org/3.2/man7/EVP_KDF-ARGON2/) 
+and [libargon2](https://github.com/P-H-C/phc-winner-argon2), specified via [RFC9106](https://www.rfc-editor.org/rfc/rfc9106.html#name-argon2-algorithm). 
+To compile `pgxcrypto` with OpenSSL support, you need at least OpenSSL 3.2. 
+Currently this is only shipped on relatively recent distributions.
 
 ### Available options
 
@@ -161,8 +161,8 @@ parameter value reflects the number of `1kB` memory blocks. The default is `4096
   `base64` encoded keys (the default) or `hex` encoded hash keys. Don't use this if you intend to 
   share the keys between systems. This affects the output of the password hash only. Mostly there 
   for testing purposes and might be removed some time.
-- `backend`: Choose between `openssl` (default) and `libargon2` backend to create the password 
-  digest. Note: `openssl` requires at least OpenSSL >= 3.2 to work. 
+- `backend`: Choose between `openssl` and `libargon2` backend to create the password 
+  digest. Note: `openssl` requires at least OpenSSL >= 3.2 to work. `libargon2` is the default. 
 
 The long format of parameters names are exclusive to `pgxcrypto_pwhash` and not supported for use 
 outside of the scope of this extension. Instead, use the short format. This is also the reason why
@@ -183,7 +183,7 @@ SELECT pgxcrypto_argon2('password', pgxcrypto_gen_salt('argon2id'));
 
 `Argon2` can use either implementations based on `libargon2` or `OpenSSL`. `pgxcrypto_pwhash` supports
 the GUC `pgxcrypto.argon2_default_backend` to control the default backend. This is currently set to
-`libargon2`. Additionally it is possible to control the backend for hashing by the parameter `backend` when
+`libargon2` per default. Additionally it is possible to control the backend for hashing by the parameter `backend` when
 using the `pgxcrypto_gen_salt()` function. The following example shows the behavior. Please note
 that this uses `DEBUG`, to show the effect of the parameter:
 
