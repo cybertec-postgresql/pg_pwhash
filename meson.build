@@ -1,4 +1,4 @@
-project('pgxcrypto_pwhash', ['c'])
+project('pgxcrypto_pwhash', ['c'], version: '1.0')
 
 pg_config = find_program('pg_config')
 build_args = []
