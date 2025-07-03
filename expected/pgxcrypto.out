@@ -26,7 +26,7 @@ RESET pgxcrypto.argon2_default_backend;
 SHOW pgxcrypto.argon2_default_backend;
  pgxcrypto.argon2_default_backend 
 ----------------------------------
- openssl
+ libargon2
 (1 row)
 
 --
@@ -329,7 +329,7 @@ RESET pgxcrypto.argon2_default_backend;
 SHOW pgxcrypto.argon2_default_backend;
  pgxcrypto.argon2_default_backend 
 ----------------------------------
- openssl
+ libargon2
 (1 row)
 
 INSERT INTO pgxcrypto_test_argon2(pw, salt) VALUES('password', pgxcrypto_gen_salt('argon2id','memcost=4096', 'parallelism=1', 'rounds=3'));

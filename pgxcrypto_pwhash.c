@@ -25,7 +25,7 @@ static bool pgxcrypto_setting_always_pad_base64 = false;
 /**
  * Default argon2 backend to use for hashing.
  */
-static int argon2_backend = ARGON2_BACKEND_TYPE_OSSL;
+static int argon2_backend = ARGON2_BACKEND_TYPE_LIBARGON2;
 
 struct pgxcrypto_magic
 {
