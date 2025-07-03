@@ -17,7 +17,16 @@ whether prerequisites are met.
 make && make install
 ```
 
-or via meson
+Normally this builds `pgxcrypto_pwhash` without OpenSSL support for Argon2 password hashing, but
+it can be turned on by the `_PGXCRYPTO_ARGON2_OSSL_SUPPORT` compiler macro:
+
+```shell
+make -D _PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 && make install
+```
+
+Please note that this doesn't test for `libscrypt` and `libargon2` presence and API compatibility automatically.
+
+Thus, best option is to use `meson`:
 
 ```shell
 mkdir build && meson setup build .
@@ -30,7 +39,8 @@ ninja install
 ```
 
 Building with `meson` is recommended, since this allows for some detailed preliminary checks before 
-compiling.
+compiling. It checks for API compatibility and automatically chooses the right compiler flags if
+compatible libraries are found (e.g. OpenSSL).
 
 If all prerequisites are as expected, this will compile the extension and generate the 
 `pgxcrypto.so` shared library. Then load the new extension into your PostgreSQL instance:
