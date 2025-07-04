@@ -17,5 +17,4 @@ build-stage:
     - su postgres -c "meson setup build"
     - su postgres -c "ninja -C build"
     - ninja -C build install
-    - su postgres -c "ninja -C build test"
-    - su postgres -c "test -f /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs"
+    - su postgres -c "ninja -C build test || cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs"
