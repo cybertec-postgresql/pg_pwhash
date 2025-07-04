@@ -132,6 +132,64 @@ endif
 
 # #################################################################################################
 
+# #################################################################################################
+# Check if crypt() supports scrypt
+
+code = '''
+#include <stdlib.h>
+#include <crypt.h>
+#include <errno.h>
+int main(int argc, char **argv)
+{
+    char *salt = crypt_gensalt("$7$", 6, NULL, 0);
+
+    if (errno == EINVAL)
+        exit(1);
+    else
+        exit(0);
+}
+'''
+
+result = cc.run(code, args: '-lcrypt', name: 'crypt() scrypt support')
+
+if result.returncode() == 0
+    build_args += '-D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1'
+    message('setting build flag _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1')
+else
+    message('crypt() support for scrypt not available')
+endif
+
+# #################################################################################################
+
+# #################################################################################################
+# Check if crypt() supports yescrypt
+
+code = '''
+#include <stdlib.h>
+#include <crypt.h>
+#include <errno.h>
+int main(int argc, char **argv)
+{
+    char *salt = crypt_gensalt("$y$", 6, NULL, 0);
+
+    if (errno == EINVAL)
+        exit(1);
+    else
+        exit(0);
+}
+'''
+
+result = cc.run(code, args: '-lcrypt', name: 'crypt() yescrypt support')
+
+if result.returncode() == 0
+    build_args += '-D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1'
+    message('setting build flag _PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1')
+else
+    message('crypt() support for yescrypt not available')
+endif
+
+# #################################################################################################
+
 regress_tests = [ 'pgxcrypto' ]
 
 test('regress',

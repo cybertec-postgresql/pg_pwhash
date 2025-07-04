@@ -105,6 +105,11 @@ _yescrypt_apply_options(Datum *options, int num_options, int *rounds)
 StringInfo
 xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 {
+#ifndef _PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("this platform does not provide crypt support for yescrypt"));
+#else
 	StringInfo result;
 	char      *salt_buf;
 	int        rounds;
@@ -145,11 +150,17 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 
 	appendStringInfoString(result, salt_buf);
 	return result;
+#endif
 }
 
 Datum
 pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
 {
+#ifndef _PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("this platform does not provide crypt support for yescrypt"));
+#else
 	text *password;
 	text *salt;
 	text *result;
@@ -218,6 +229,7 @@ pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
 
 	/* ... and we're done */
 	PG_RETURN_TEXT_P(result);
+#endif
 }
 
 Datum

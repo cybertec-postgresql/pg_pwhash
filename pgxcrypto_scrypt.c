@@ -270,6 +270,11 @@ static StringInfo xgen_gen_salt_string(int rounds,
 StringInfo
 xgen_crypt_gensalt_scrypt(Datum *options, int num_options, const char *magic_string)
 {
+#ifndef _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("this platform does not provide crypt support for scrypt"));
+#else
 	StringInfo result;
 	char      *salt_buf;
 	int        rounds;
@@ -306,6 +311,7 @@ xgen_crypt_gensalt_scrypt(Datum *options, int num_options, const char *magic_str
 
 	appendStringInfoString(result, salt_buf);
 	return result;
+#endif
 }
 
 StringInfo
@@ -528,6 +534,11 @@ scrypt_libscrypt_internal(const char *pw,
 Datum
 pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 {
+#ifndef _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT
+	ereport(ERROR,
+			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			errmsg("this platform does not provide crypt support for scrypt"));
+#else
 	text *password;
 	text *settings;
 	text *result;
@@ -592,6 +603,7 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 	memcpy(VARDATA(result), hash, strlen(hash));
 
 	PG_RETURN_TEXT_P(result);
+#endif
 }
 
 /**
