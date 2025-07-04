@@ -1,20 +1,52 @@
-image: "debian:12"
-before_script:
-  - DEBIAN_FRONTEND=noninteractive apt -y update
-  - DEBIAN_FRONTEND=noninteractive apt -y install gpg curl lsb-release
-  - echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-  - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
-  - DEBIAN_FRONTEND=noninteractive apt -y update
-  - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-17 postgresql-17 libscrypt-dev libargon2-dev gcc make libssl-dev meson
-
-stages:
-  - build
-
-build-stage:
-  stage: build
+build-debian12-pgdg-17:
+  image: "debian:12"
+  before_script:
+    - DEBIAN_FRONTEND=noninteractive apt -y update
+    - DEBIAN_FRONTEND=noninteractive apt -y install gpg curl lsb-release
+    - echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+    - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+    - DEBIAN_FRONTEND=noninteractive apt -y update
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-17 postgresql-17 libscrypt-dev libargon2-dev gcc make libssl-dev meson
   script:
     - pg_ctlcluster 17 main start
     - su postgres -c "meson setup build"
     - su postgres -c "ninja -C build"
     - ninja -C build install
-    - su postgres -c "ninja -C build test || cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs"
+    - su postgres -c "ninja -C build test || (cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && exit 1)"
+
+build-rocky8-pgdg-17:
+  image: "rockylinux:8"
+  before_script:
+    - dnf -y install epel-release
+    - dnf -y --enablerepo powertools install meson gcc libscrypt-devel libargon2-devel openssl-devel
+    - dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    - dnf -qy module disable postgresql
+    - dnf -y update --refresh
+    - dnf -y install --enablerepo powertools postgresql17-server postgresql17-devel
+    - su - postgres -c "/usr/pgsql-17/bin/initdb -D /var/lib/pgsql/17/data"
+
+  script:
+    - su - postgres -c "/usr/pgsql-17/bin/pg_ctl -D /var/lib/pgsql/17/data start"
+    - su postgres -c "PATH=$PATH:/usr/pgsql-17/bin/ meson setup build"
+    - su postgres -c "ninja -C build"
+    - ninja -C build install
+    - su postgres -c "ninja -C build test || (cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && exit 1)"
+
+build-rocky9-pgdg-17:
+  image: "rockylinux:9"
+  before_script:
+    - dnf -y install epel-release
+    - dnf -y config-manager --set-enabled crb
+    - dnf -y install meson gcc libscrypt-devel libargon2-devel openssl-devel
+    - dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    - dnf -qy module disable postgresql
+    - dnf -y update --refresh
+    - dnf -y install postgresql17-server postgresql17-devel
+    - su - postgres -c "/usr/pgsql-17/bin/initdb -D /var/lib/pgsql/17/data"
+
+  script:
+    - su - postgres -c "/usr/pgsql-17/bin/pg_ctl -D /var/lib/pgsql/17/data start"
+    - su postgres -c "PATH=$PATH:/usr/pgsql-17/bin/ meson setup build"
+    - su postgres -c "ninja -C build"
+    - ninja -C build install
+    - su postgres -c "ninja -C build test || (cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && exit 1)"
