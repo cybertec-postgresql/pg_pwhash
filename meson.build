@@ -72,6 +72,7 @@ int main(int argc, char **argv)
 
 else
     # this means this is an OpenSSL version likely older than 3.2.0
+    message('OpenSSL support for Argon2 not available')
 endif
 
 # #################################################################################################
