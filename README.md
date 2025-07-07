@@ -5,13 +5,13 @@ This extension adds advanced password hashing algorithms to PostgreSQL databases
 # Requirements
 
 To build `pgxcrypto_pwhash` you need OpenSSL version >= `3.2` and `libscrypt` installed. Argon2 support
-is additionally provided by the `libargon2` library backend, too.
+is additionally provided by the `libargon2` library backend, too. Additionally `pgxcrypto_pwhash`
+provides wrappers to the platforms `crypt()` API for `yescrypt` and `scrypt`.
 
 If you use meson to built the extension, then check the output, since `meson setup` will check 
-whether prerequisites are met.
+whether prerequisites are met. This is the recommended method to build this extension.
 
 # Installation
-
 
 ```shell
 make && make install
@@ -25,6 +25,15 @@ make -D _PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 && make install
 ```
 
 Please note that this doesn't test for `libscrypt` and `libargon2` presence and API compatibility automatically.
+
+If you know that your platform supports `yescrypt` and `scrypt` via libc's `crypt()` API, you can compile
+`pgxcrypto_pwhash` to provide function wrapper for this, too:
+
+```shell
+make -D _PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 install
+```
+This doesn't really test for support of course, if your platforms libc doesn't provide proper support,
+function calls to generate such hashes will error out, nevertheless.
 
 Thus, best option is to use `meson`:
 
