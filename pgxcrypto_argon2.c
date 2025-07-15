@@ -598,6 +598,7 @@ text *argon2_internal_libargon2(const char *magic,
 	 * XXX: It should be safe to cast the string length to int, since we
 	 *      can't exceed ARGON2_SALT_MAX_LEN.
 	 */
+
 	salt_decoded = pgxcrypto_from_base64(salt,
 										 (int)strlen(salt),
 										 &salt_decoded_len);
@@ -611,7 +612,7 @@ text *argon2_internal_libargon2(const char *magic,
 	context.pwd    = (uint8_t *)pw; /* password array */
 	context.pwdlen = strlen(pw); /* password length */
 	context.salt   = salt_decoded;  /* salt array */
-	context.saltlen = strlen((char *)salt_decoded); /* salt length */
+	context.saltlen =  salt_decoded_len; //strlen((const char *) salt_decoded); /* salt length */
 	context.secret  = NULL;
 	context.secretlen = 0;  /* optional secret data */
 	context.ad        =	NULL;

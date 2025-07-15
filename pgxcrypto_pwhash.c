@@ -1,10 +1,10 @@
 #include "postgres.h"
 #include "fmgr.h"
 #include "catalog/pg_type_d.h"
+#include <common/base64.h>
 #include "utils/builtins.h"
 #include "utils/array.h"
 #include "utils/guc.h"
-#include "openssl/evp.h"
 
 #include "pgxcrypto_pwhash.h"
 #include "pgxcrypto_scrypt.h"
@@ -142,18 +142,13 @@ pgxcrypto_check_minmax(int min, int max, int value, const char *param_name)
  */
 char *pgxcrypto_to_base64(const unsigned char *input, int length)
 {
-	const int pl = 4*((length+2)/3);
-	char *output = (char *)palloc0(pl+1); /* +1 for the terminating null that EVP_EncodeBlock adds */
-	const int ol = EVP_EncodeBlock((unsigned char *)output, input, length);
+	const int pl = pg_b64_enc_len(length);
+	char *output = palloc0(pl + 1);
+	const int ol = pg_b64_encode((unsigned char *)input, length, output, pl);
 	int unpd_len;
 
-	if (ol != pl)
-	{
-		elog(ERROR, "base64 encode predicted \"%d\" but we got \"%d\"", pl, ol);
-	}
-
 	/*
-	 * EVP_EncodeBlock() always pads, check if we have to deal with it.
+	 * pg_b64_encode() always pads, check if we have to deal with it.
 	 */
 	if (pgxcrypto_setting_always_pad_base64)
 	{
@@ -161,7 +156,7 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
 	}
 
 	/* In case padding is not requested */
-	return pgxcrypto_unpad_base64(output, (int)strlen(output), &unpd_len);
+	return pgxcrypto_unpad_base64(output, ol, &unpd_len);
 }
 
 /*
@@ -172,9 +167,7 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
  * padded), will implicitly padded before decoding. pgxcrypto always pads
  * output, but we also need to cooperate with external resources which might not.
  *
- * outlen stores the number of 3 byte blocks decoded by OpenSSLs'
- * EVP_DecodeBlock() and doesn't reflect the real number of bytes contained in
- * the returned buffer!
+ * outlen will return the number of decoded bytes.
  */
 unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
 {
@@ -185,16 +178,10 @@ unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
 
 	/* Pad input if necessary */
 	padded = pgxcrypto_pad_base64(input, length, &pd_len);
-	ol = 3 * pd_len / 4;
-	output = (unsigned char *) palloc0(ol + 1); /* +1 null byte */
+	ol = pg_b64_dec_len(pd_len);
+	output = (unsigned char *) palloc0(ol); /* +1 null byte */
 
-	*outlen = EVP_DecodeBlock(output, (unsigned char *)padded, pd_len);
-
-	if ((*outlen) != ol)
-	{
-		elog(ERROR, "decode predicted \"%d\" but we got \"%d\"", (*outlen), ol);
-
-	}
+	*outlen = pg_b64_decode(padded, pd_len, output, ol);
 
 	return output;
 }
