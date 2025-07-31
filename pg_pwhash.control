@@ -1,0 +1,4 @@
+comment = 'pg_pwhash - An extension for advanced password hashing'
+default_version = '1.0'
+module_pathname = '$libdir/pg_pwhash'
+relocatable = true

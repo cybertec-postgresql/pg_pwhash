@@ -1,4 +1,4 @@
-#include "pgxcrypto_yescrypt.h"
+#include "pwhash_yescrypt.h"
 
 #include <crypt.h>
 #include <varatt.h>
@@ -7,12 +7,12 @@
 #include "catalog/pg_type_d.h"
 #include "fmgr.h"
 
-#ifndef _PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT
+#ifndef _PWHASH_CRYPT_YESCRYPT_SUPPORT
 
-PG_FUNCTION_INFO_V1(pgxcrypto_yescrypt_crypt);
+PG_FUNCTION_INFO_V1(pwhash_yescrypt_crypt);
 
 Datum
-pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
+pwhash_yescrypt_crypt(PG_FUNCTION_ARGS)
 {
 	ereport(ERROR,
 			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -29,12 +29,12 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 
 #else
 
-#define PGXCRYPTO_YESCRYPT_MAX_ROUNDS 11
-#define PGXCRYPTO_YESCRYPT_MIN_ROUNDS 1
-#define PGXCRYPTO_YESCRYPT_ROUNDS 5
+#define PWHASH_YESCRYPT_MAX_ROUNDS 11
+#define PWHASH_YESCRYPT_MIN_ROUNDS 1
+#define PWHASH_YESCRYPT_ROUNDS 5
 
 /* magic identifier string for yescrypt */
-#define PGXCRYPTO_YESCRYPT_MAGIC "$y$"
+#define PWHASH_YESCRYPT_MAGIC "$y$"
 
 /*
  * According to current crypt(5) documentation, there is no lower limit
@@ -44,13 +44,13 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
  *        Hashed passphrase format
  *        \$y\$[./A-Za-z0-9]+\$[./A-Za-z0-9]{,86}\$[./A-Za-z0-9]{43}
  */
-#define PGXCRYPT_YESCRYPT_CRYPT_MAX_SALT_LEN 86
+#define PWHASH_YESCRYPT_CRYPT_MAX_SALT_LEN 86
 
 #define NUM_YESCRYPT_OPTIONS 1
-static struct pgxcrypto_option yescrypt_options[] =
+static struct pwhash_option yescrypt_options[] =
 {
-	{ "rounds", "rounds", INT4OID, PGXCRYPTO_YESCRYPT_MIN_ROUNDS,
-		PGXCRYPTO_YESCRYPT_MAX_ROUNDS, {._int_value = PGXCRYPTO_YESCRYPT_ROUNDS} }
+	{ "rounds", "rounds", INT4OID, PWHASH_YESCRYPT_MIN_ROUNDS,
+		PWHASH_YESCRYPT_MAX_ROUNDS, {._int_value = PWHASH_YESCRYPT_ROUNDS} }
 };
 
 /* ****************************************************************************
@@ -59,7 +59,7 @@ static struct pgxcrypto_option yescrypt_options[] =
 StringInfo
 xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string);
 
-PG_FUNCTION_INFO_V1(pgxcrypto_yescrypt_crypt);
+PG_FUNCTION_INFO_V1(pwhash_yescrypt_crypt);
 
 /* ****************************************************************************
  * Implementation
@@ -69,7 +69,7 @@ _yescrypt_apply_options(Datum *options, int num_options, int *rounds)
 {
 	int i;
 
-	*rounds = PGXCRYPTO_YESCRYPT_ROUNDS;
+	*rounds = PWHASH_YESCRYPT_ROUNDS;
 
 	for (i = 0; i < num_options; i++)
 	{
@@ -80,7 +80,7 @@ _yescrypt_apply_options(Datum *options, int num_options, int *rounds)
 
 		if (sep)
 		{
-			struct pgxcrypto_option *opt;
+			struct pwhash_option *opt;
 
 			/* mark position end of key/value pair */
 			*sep++ = '\0';
@@ -93,7 +93,7 @@ _yescrypt_apply_options(Datum *options, int num_options, int *rounds)
 				{
 					*rounds = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min, opt->max, *rounds, opt->alias);
+					pwhash_check_minmax(opt->min, opt->max, *rounds, opt->alias);
 				}
 			}
 			else
@@ -127,7 +127,7 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 
 	/* Sanity check: yescrypt requires magic string "$y$" */
 	if (magic_string == NULL || strncmp(magic_string,
-		PGXCRYPTO_YESCRYPT_MAGIC, strlen(PGXCRYPTO_YESCRYPT_MAGIC)) != 0)
+		PWHASH_YESCRYPT_MAGIC, strlen(PWHASH_YESCRYPT_MAGIC)) != 0)
 	{
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -139,7 +139,7 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 
 	/* Create the salt */
 	result = makeStringInfo();
-	salt_buf = crypt_gensalt(PGXCRYPTO_YESCRYPT_MAGIC, rounds, NULL, 0);
+	salt_buf = crypt_gensalt(PWHASH_YESCRYPT_MAGIC, rounds, NULL, 0);
 
 	/* Error handling */
 	if (errno == EINVAL)
@@ -164,7 +164,7 @@ xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic_string)
 }
 
 Datum
-pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
+pwhash_yescrypt_crypt(PG_FUNCTION_ARGS)
 {
 	text *password;
 	text *salt;
@@ -196,7 +196,7 @@ pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
 	/*
 	 * Some preliminary checks: salt should start with $y$
 	 */
-	if (strncmp(salt_str, PGXCRYPTO_YESCRYPT_MAGIC, strlen(PGXCRYPTO_YESCRYPT_MAGIC)) != 0)
+	if (strncmp(salt_str, PWHASH_YESCRYPT_MAGIC, strlen(PWHASH_YESCRYPT_MAGIC)) != 0)
 	{
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
@@ -241,5 +241,5 @@ pgxcrypto_yescrypt_crypt(PG_FUNCTION_ARGS)
 Datum
 xcrypt_yescrypt_crypt(Datum password, Datum salt)
 {
-	return DirectFunctionCall2(pgxcrypto_yescrypt_crypt, password, salt);
+	return DirectFunctionCall2(pwhash_yescrypt_crypt, password, salt);
 }

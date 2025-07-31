@@ -1,10 +1,10 @@
-#ifndef PGXCRYPTO_PWHASH_PGXCRYPTO_SCRYPT_H
-#define PGXCRYPTO_PWHASH_PGXCRYPTO_SCRYPT_H
+#ifndef PWHASH_PGXCRYPTO_SCRYPT_H
+#define PWHASH_PGXCRYPTO_SCRYPT_H
 
 #include "postgres.h"
 #include "fmgr.h"
 
-#include "pgxcrypto_pwhash.h"
+#include "pg_pwhash.h"
 
 StringInfo
 xgen_salt_scrypt(Datum *generator_options, int numoptions, const char *magic);

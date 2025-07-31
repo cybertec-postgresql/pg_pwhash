@@ -1,4 +1,4 @@
-#include "pgxcrypto_scrypt.h"
+#include "pwhash_scrypt.h"
 
 #include <crypt.h>
 #include <nodes/value.h>
@@ -27,8 +27,8 @@ PG_MODULE_MAGIC;
  * Note that crypt() wants to identify scrypt hashes via "$7$", whereas
  * the openssl and libscrypt backends want to have "$scrypt$".
  */
-#define PGXCRYPTO_SCRYPT_MAGIC "$scrypt$"
-#define PGXCRYPTO_SCRYPT_CRYPT_MAGIC "$7$"
+#define PWHASH_SCRYPT_MAGIC "$scrypt$"
+#define PWHASH_SCRYPT_CRYPT_MAGIC "$7$"
 
 /*
  * A crypt() compatible salt string must be in the format
@@ -38,10 +38,10 @@ PG_MODULE_MAGIC;
  *
  * Thus we request at lest 14 bytes of length.
  */
-#define PGXCRYPTO_SCRYPT_CRYPT_MIN_SALT_LEN 14
+#define PWHASH_SCRYPT_CRYPT_MIN_SALT_LEN 14
 
 /* Min value for rounds */
-#define PGXCRYPTO_SCRYPT_MIN_ROUNDS 1
+#define PWHASH_SCRYPT_MIN_ROUNDS 1
 
 /*
  * Max value for rounds
@@ -51,20 +51,20 @@ PG_MODULE_MAGIC;
  * 32 is the max allowed value here defined by python's passlib, but it seems we cannot do more
  * than currently 20 when using OpenSSL. libscrypt allows more, so be en par with python.
  */
-#define PGXCRYPTO_SCRYPT_MAX_ROUNDS 32
+#define PWHASH_SCRYPT_MAX_ROUNDS 32
 
 /* Min value for block size */
-#define PGXCRYPTO_SCRYPT_MIN_BLOCK_SIZE 1
+#define PWHASH_SCRYPT_MIN_BLOCK_SIZE 1
 
 /*
  * Minimum rounds for crypt()
  */
-#define PGXCRYPTO_SCRYPT_CRYPT_MIN_ROUNDS 6
+#define PWHASH_SCRYPT_CRYPT_MIN_ROUNDS 6
 
 /*
  * Maximum rounds for crypt()
  */
-#define PGXCRYPTO_SCRYPT_CRYPT_MAX_ROUNDS 11
+#define PWHASH_SCRYPT_CRYPT_MAX_ROUNDS 11
 
 /*
  * Max value for block size
@@ -72,15 +72,15 @@ PG_MODULE_MAGIC;
  * XXX: This probably needs to be revisited some day, but i have no numbers what
  * a suitable max value would be atm.
  */
-#define PGXCRYPTO_SCRYPT_MAX_BLOCK_SIZE 1024
+#define PWHASH_SCRYPT_MAX_BLOCK_SIZE 1024
 
 /*
  * Min number of computing threads
  */
-#define PGXCRYPTO_SCRYPT_MIN_PARALLELISM 1
+#define PWHASH_SCRYPT_MIN_PARALLELISM 1
 
 /* Max number of computing threads */
-#define PGXCRYPTO_SCRYPT_MAX_PARALLELISM 1024
+#define PWHASH_SCRYPT_MAX_PARALLELISM 1024
 
 enum scrypt_backend_types
 {
@@ -91,14 +91,14 @@ enum scrypt_backend_types
 typedef enum scrypt_backend_types scrypt_backend_type_t;
 
 #define NUM_SCRYPT_OPTIONS 4
-static struct pgxcrypto_option scrypt_options[] =
+static struct pwhash_option scrypt_options[] =
 {
-	{ "rounds", "ln", INT4OID,  PGXCRYPTO_SCRYPT_MIN_ROUNDS,
-	  PGXCRYPTO_SCRYPT_MAX_ROUNDS, {._int_value = SCRYPT_WORK_FACTOR_N } },
-	{ "block_size", "r", INT4OID, PGXCRYPTO_SCRYPT_MIN_BLOCK_SIZE,
-	  PGXCRYPTO_SCRYPT_MAX_BLOCK_SIZE, {._int_value = SCRYPT_BLOCK_SIZE_r } },
-	{ "parallelism", "p", INT4OID, PGXCRYPTO_SCRYPT_MIN_PARALLELISM,
-	  PGXCRYPTO_SCRYPT_MAX_PARALLELISM, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
+	{ "rounds", "ln", INT4OID,  PWHASH_SCRYPT_MIN_ROUNDS,
+	  PWHASH_SCRYPT_MAX_ROUNDS, {._int_value = SCRYPT_WORK_FACTOR_N } },
+	{ "block_size", "r", INT4OID, PWHASH_SCRYPT_MIN_BLOCK_SIZE,
+	  PWHASH_SCRYPT_MAX_BLOCK_SIZE, {._int_value = SCRYPT_BLOCK_SIZE_r } },
+	{ "parallelism", "p", INT4OID, PWHASH_SCRYPT_MIN_PARALLELISM,
+	  PWHASH_SCRYPT_MAX_PARALLELISM, {._int_value = SCRYPT_PARALLEL_FACTOR_p } },
 
 	/*
 	 * "backend" is not part of the scrypt specification but allows to identify
@@ -112,17 +112,17 @@ static struct pgxcrypto_option scrypt_options[] =
 };
 
 #define NUM_SCRYPT_CRYPT_OPTIONS 1
-static struct pgxcrypto_option scrypt_crypt_options[] =
+static struct pwhash_option scrypt_crypt_options[] =
 {
 	{
-		"rounds", "rounds", INT4OID, PGXCRYPTO_SCRYPT_CRYPT_MIN_ROUNDS,
-		PGXCRYPTO_SCRYPT_CRYPT_MAX_ROUNDS, { ._int_value =  PGXCRYPTO_SCRYPT_MIN_ROUNDS }
+		"rounds", "rounds", INT4OID, PWHASH_SCRYPT_CRYPT_MIN_ROUNDS,
+		PWHASH_SCRYPT_CRYPT_MAX_ROUNDS, { ._int_value =  PWHASH_SCRYPT_CRYPT_MIN_ROUNDS }
 	}
 };
 
 /* Forwarded declarations */
-PG_FUNCTION_INFO_V1(pgxcrypto_scrypt);
-PG_FUNCTION_INFO_V1(pgxcrypto_scrypt_crypt);
+PG_FUNCTION_INFO_V1(pwhash_scrypt);
+PG_FUNCTION_INFO_V1(pwhash_scrypt_crypt);
 
 static void
 _scrypt_apply_options(Datum *options,
@@ -152,7 +152,7 @@ scrypt_openssl_internal(const char *pw,
 
 static void
 simple_salt_parser_init(struct parse_salt_info *pinfo,
-						struct pgxcrypto_option *options,
+						struct pwhash_option *options,
 						const char *magic_string,
 						size_t numoptions);
 
@@ -160,7 +160,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
 
 /**
  * Calculates the working factor scrypt used for openssl/libscrypt backend. Result
- * is 2^exp. If exp is larger than PGXCRYPTO_SCRYPT_MAX_ROUNDS, exp will be truncated to the
+ * is 2^exp. If exp is larger than PWHASH_SCRYPT_MAX_ROUNDS, exp will be truncated to the
  * maximum allowed value.
  *
  * @param exp The cost exponent
@@ -168,7 +168,7 @@ simple_salt_parser_init(struct parse_salt_info *pinfo,
  */
 static int calc_working_factor(int exp)
 {
-	int exp_max = Min(exp, PGXCRYPTO_SCRYPT_MAX_ROUNDS);
+	int exp_max = Min(exp, PWHASH_SCRYPT_MAX_ROUNDS);
 	int result  = 1;
 	int i;
 
@@ -181,7 +181,7 @@ static int calc_working_factor(int exp)
 
 static void
 simple_salt_parser_init(struct parse_salt_info *pinfo,
-						struct pgxcrypto_option *options,
+						struct pwhash_option *options,
 						const char *magic_string,
 						size_t numoptions)
 {
@@ -219,7 +219,7 @@ static StringInfo xgen_gen_salt_string(int rounds,
 									   scrypt_backend_type_t backend,
 									   bool include_backend_option)
 {
-	char *magic_string = PGXCRYPTO_SCRYPT_MAGIC;
+	char *magic_string = PWHASH_SCRYPT_MAGIC;
 	StringInfo result;
 
 	result = makeStringInfo();
@@ -289,7 +289,7 @@ xgen_crypt_gensalt_scrypt(Datum *options, int num_options, const char *magic_str
 
 	if ( errno == EINVAL || errno == ENOMEM )
 	{
-#ifndef _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT
+#ifndef _PWHASH_CRYPT_SCRYPT_SUPPORT
 		ereport(ERROR,
 				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("this platform does not provide crypt support for scrypt"));
@@ -343,7 +343,7 @@ xgen_salt_scrypt(Datum *options, int numoptions, const char *magic)
 	}
 
 	/* Convert bytes of the generated salt into base64 */
-	salt_encoded = pgxcrypto_to_base64((const unsigned char*)salt_buf,
+	salt_encoded = pwhash_to_base64((const unsigned char*)salt_buf,
 									   SCRYPT_SALT_MAX_LEN);
 
 	result = xgen_gen_salt_string(rounds,
@@ -363,7 +363,7 @@ _scrypt_apply_crypt_options(Datum *options,
 							int *rounds)
 {
 	int i;
-	*rounds = PGXCRYPTO_SCRYPT_CRYPT_MIN_ROUNDS;
+	*rounds = PWHASH_SCRYPT_CRYPT_MIN_ROUNDS;
 
 	for (i = 0; i < num_options; i++)
 	{
@@ -373,7 +373,7 @@ _scrypt_apply_crypt_options(Datum *options,
 		char *sep = strchr(str, '=');
 
 		if (sep) {
-			struct pgxcrypto_option *opt;
+			struct pwhash_option *opt;
 			*sep++ = '\0';
 			opt = check_option(str,
 							   scrypt_crypt_options,
@@ -386,8 +386,8 @@ _scrypt_apply_crypt_options(Datum *options,
 				{
 					*rounds = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(PGXCRYPTO_SCRYPT_CRYPT_MIN_ROUNDS,
-										   PGXCRYPTO_SCRYPT_CRYPT_MAX_ROUNDS,
+					pwhash_check_minmax(PWHASH_SCRYPT_CRYPT_MIN_ROUNDS,
+										   PWHASH_SCRYPT_CRYPT_MAX_ROUNDS,
 										   *rounds,
 										   "rounds");
 				}
@@ -422,7 +422,7 @@ _scrypt_apply_options(Datum *options,
 		/* Found something? */
 		if (sep)
 		{
-			struct pgxcrypto_option *opt;
+			struct pwhash_option *opt;
 			*sep++ = '\0';
 			opt = check_option(str,
 							   scrypt_options,
@@ -439,7 +439,7 @@ _scrypt_apply_options(Datum *options,
 					/*
 					 * Check min/max
 					 */
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *rounds,
 										   opt->alias);
@@ -452,7 +452,7 @@ _scrypt_apply_options(Datum *options,
 				{
 					*block_size = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *block_size,
 										   opt->alias);
@@ -465,7 +465,7 @@ _scrypt_apply_options(Datum *options,
 				{
 					*parallelism = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *parallelism,
 										   opt->alias);
@@ -525,13 +525,13 @@ scrypt_libscrypt_internal(const char *pw,
 	}
 
 	/* Encode output */
-	output_encoded = pgxcrypto_to_base64((unsigned char *)output, sizeof output);
+	output_encoded = pwhash_to_base64((unsigned char *)output, sizeof output);
 
 	return output_encoded;
 }
 
 Datum
-pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
+pwhash_scrypt_crypt(PG_FUNCTION_ARGS)
 {
 	text *password;
 	text *settings;
@@ -546,12 +546,12 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 	pw_cstr = text_to_cstring(password);
 	settings_cstr = text_to_cstring(settings);
 
-	if (strlen(settings_cstr) < PGXCRYPTO_SCRYPT_CRYPT_MIN_SALT_LEN)
+	if (strlen(settings_cstr) < PWHASH_SCRYPT_CRYPT_MIN_SALT_LEN)
 	{
 		ereport(ERROR,
 				errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("salt string must be at least %d bytes",
-						PGXCRYPTO_SCRYPT_CRYPT_MIN_SALT_LEN));
+						PWHASH_SCRYPT_CRYPT_MIN_SALT_LEN));
 	}
 
 	/* Force crypt() compatible magic string */
@@ -566,7 +566,7 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
 
 	if ( errno == EINVAL )
 	{
-#ifndef _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT
+#ifndef _PWHASH_CRYPT_SCRYPT_SUPPORT
 		ereport(ERROR,
 				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("this platform does not provide crypt support for scrypt"));
@@ -612,7 +612,7 @@ pgxcrypto_scrypt_crypt(PG_FUNCTION_ARGS)
  * See https://github.com/technion/libscrypt/tree/master for more details.
  */
 Datum
-pgxcrypto_scrypt(PG_FUNCTION_ARGS)
+pwhash_scrypt(PG_FUNCTION_ARGS)
 {
 	Datum *options          = NULL;    /* ARRAY option elements */
 	size_t noptions         = 0;   /* number of options */
@@ -646,7 +646,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 
 	simple_salt_parser_init(&pinfo,
 							scrypt_options,
-							PGXCRYPTO_SCRYPT_MAGIC,
+							PWHASH_SCRYPT_MAGIC,
 							NUM_SCRYPT_OPTIONS);
 
 	simple_salt_parser(&pinfo, salt_buf);
@@ -685,7 +685,7 @@ pgxcrypto_scrypt(PG_FUNCTION_ARGS)
 	memcpy(salt_parsed, pinfo.salt, pinfo.salt_len);
 
 	elog(DEBUG2, "parsed salt: \"%s\"", salt_parsed);
-	salt_decoded = (char *)pgxcrypto_from_base64(salt_parsed,
+	salt_decoded = (char *)pwhash_from_base64(salt_parsed,
 												 (int)(pinfo.salt_len),
 												 &salt_decoded_len);
 
@@ -831,7 +831,7 @@ scrypt_openssl_internal(const char *pw,
 	 * XXX: Safe to cast length to int, since we can't exceed
 	 *      SCRYPT_OUTPUT_VEC_LEN.
 	 */
-	output_b64 = pgxcrypto_to_base64((unsigned char *)output, (int)output_len);
+	output_b64 = pwhash_to_base64((unsigned char *)output, (int)output_len);
 
 	/* ..and we're done */
 	return output_b64;
@@ -841,11 +841,11 @@ scrypt_openssl_internal(const char *pw,
 Datum
 xcrypt_scrypt(Datum password, Datum salt)
 {
-	return DirectFunctionCall2(pgxcrypto_scrypt, password, salt);
+	return DirectFunctionCall2(pwhash_scrypt, password, salt);
 }
 
 Datum
 xcrypt_scrypt_crypt(Datum password, Datum salt)
 {
-	return DirectFunctionCall2(pgxcrypto_scrypt_crypt, password, salt);
+	return DirectFunctionCall2(pwhash_scrypt_crypt, password, salt);
 }

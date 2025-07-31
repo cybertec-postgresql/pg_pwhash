@@ -1,5 +1,5 @@
-#ifndef PGXCRYPTO_PWHASH_PGXCRYPTO_PWHASH_H
-#define PGXCRYPTO_PWHASH_PGXCRYPTO_PWHASH_H
+#ifndef PWHASH_PWHASH_H
+#define PWHASH_PWHASH_H
 
 #include "fmgr.h"
 
@@ -16,7 +16,7 @@ typedef enum {
 	ARGON2_BACKEND_TYPE_LIBARGON2,
   } argon2_digest_backend_t;
 
-struct pgxcrypto_option
+struct pwhash_option
 {
 	char *name;     /* name of the option, as specified by salt function */
 	char *alias;    /* alias of the option, as used by the final salt string */
@@ -36,7 +36,7 @@ struct pgxcrypto_option
 /*
  * Default buffer size for the algorithm info option string.
  */
-#define PGXCRYPTO_ALGO_INFO_LEN 10
+#define PWHASH_ALGO_INFO_LEN 10
 
 struct parse_salt_info
 {
@@ -46,32 +46,32 @@ struct parse_salt_info
 	size_t salt_len_min;
 	char *magic;     /* direct pointer to magic string */
 	size_t magic_len;
-	char algo_info[PGXCRYPTO_ALGO_INFO_LEN + 1]; /* info string specific to algorithm. */
+	char algo_info[PWHASH_ALGO_INFO_LEN + 1]; /* info string specific to algorithm. */
 	size_t algo_info_len;                        /* length of algo specific string, 0 if not present */
 	char *opt_str;   /* direct pointer to options string */
 	size_t   opt_len;
 	size_t num_parse_options;
-	struct pgxcrypto_option *options;
+	struct pwhash_option *options;
 };
 
 void
-pgxcrypto_check_minmax(int min, int max, int value, const char *name);
+pwhash_check_minmax(int min, int max, int value, const char *name);
 
 /*
  * Routine to convert binary stringto base64 representation
  */
 char *
-pgxcrypto_to_base64(const unsigned char *input, int length);
+pwhash_to_base64(const unsigned char *input, int length);
 
 /*
  * Routine to decode a base64 into a binary string.
  */
 unsigned char
-*pgxcrypto_from_base64(const char *input, int length, int *outlen);
+*pwhash_from_base64(const char *input, int length, int *outlen);
 
-struct pgxcrypto_option
+struct pwhash_option
 *check_option(const char *key,
-			  struct pgxcrypto_option *option,
+			  struct pwhash_option *option,
 			  size_t numoptions,
 			  bool error_on_mismatch);
 
@@ -86,6 +86,6 @@ makeOptions(char *opt_str, size_t opt_len,
 /**
  * Returns the current setting for the default argon2 hashing backend.
  */
-argon2_digest_backend_t pgxcrypto_get_digest_backend(void);
+argon2_digest_backend_t pwhash_get_digest_backend(void);
 
 #endif

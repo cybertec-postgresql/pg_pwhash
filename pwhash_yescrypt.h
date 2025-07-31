@@ -1,8 +1,8 @@
-#ifndef PGXCRYPTO_PWHASH_PGXCRYPT_YESCRYPT_H
-#define PGXCRYPTO_PWHASH_PGXCRYPT_YESCRYPT_H
+#ifndef PWHASH_YESCRYPT_H
+#define PWHASH_YESCRYPT_H
 
 #include "postgres.h"
-#include "pgxcrypto_pwhash.h"
+#include "pg_pwhash.h"
 
 StringInfo
 xgen_salt_yescrypt(Datum *options, int numoptions, const char *magic);

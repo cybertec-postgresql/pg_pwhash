@@ -6,12 +6,12 @@
 #include "utils/array.h"
 #include "utils/guc.h"
 
-#include "pgxcrypto_pwhash.h"
-#include "pgxcrypto_scrypt.h"
-#include "pgxcrypto_argon2.h"
-#include "pgxcrypto_yescrypt.h"
+#include "pg_pwhash.h"
+#include "pwhash_scrypt.h"
+#include "pwhash_argon2.h"
+#include "pwhash_yescrypt.h"
 
-PG_FUNCTION_INFO_V1(pgxcrypto_test_options);
+PG_FUNCTION_INFO_V1(pwhash_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
 PG_FUNCTION_INFO_V1(xcrypt);
@@ -20,14 +20,14 @@ PG_FUNCTION_INFO_V1(xcrypt);
 /**
  * Enables/disable padding of base64 encoded strings.
  */
-static bool pgxcrypto_setting_always_pad_base64 = false;
+static bool pwhash_setting_always_pad_base64 = false;
 
 /**
  * Default argon2 backend to use for hashing.
  */
 static int argon2_backend = ARGON2_BACKEND_TYPE_LIBARGON2;
 
-struct pgxcrypto_magic
+struct pwhash_magic
 {
   char *name;
   char *magic;
@@ -35,7 +35,7 @@ struct pgxcrypto_magic
   Datum (*crypt) (Datum pw, Datum salt);
 };
 
-static struct pgxcrypto_magic pgxcrypto_algo[] =
+static struct pwhash_magic pgxcrypto_algo[] =
 {
 	{ "scrypt", "$scrypt$", xgen_salt_scrypt, xcrypt_scrypt },
 	{ "$7$", "$7$", xgen_crypt_gensalt_scrypt, xcrypt_scrypt_crypt },
@@ -46,7 +46,7 @@ static struct pgxcrypto_magic pgxcrypto_algo[] =
 	{ NULL, NULL, NULL }
 };
 
-static const struct config_enum_entry pgxcrypto_argon2_backend_option[] = {
+static const struct config_enum_entry pwhash_argon2_backend_option[] = {
 	{ "openssl", ARGON2_BACKEND_TYPE_OSSL, false },
 	{ "libargon2", ARGON2_BACKEND_TYPE_LIBARGON2, false },
 	{ NULL, 0, false }
@@ -59,7 +59,7 @@ static const struct config_enum_entry pgxcrypto_argon2_backend_option[] = {
  * replaced by null bytes.
  */
 static char *
-pgxcrypto_unpad_base64(char *input, int len, int *unpad_len)
+pwhash_unpad_base64(char *input, int len, int *unpad_len)
 {
 	char *s_ptr;
 
@@ -89,7 +89,7 @@ pgxcrypto_unpad_base64(char *input, int len, int *unpad_len)
  * Otherwise a palloc'ed buffer is returned with padded '=' at the end.
  */
 static char *
-pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
+pwhash_pad_base64(const char *input, int length, int *pd_len)
 {
 	int   pads = ( 4 - (length % 4) );
 	char *padded;
@@ -115,7 +115,7 @@ pgxcrypto_pad_base64(const char *input, int length, int *pd_len)
  * Will ereport an ERROR in case value exceeds either one of them.
  */
 void
-pgxcrypto_check_minmax(int min, int max, int value, const char *param_name)
+pwhash_check_minmax(int min, int max, int value, const char *param_name)
 {
 	if (value < min)
 	{
@@ -140,7 +140,7 @@ pgxcrypto_check_minmax(int min, int max, int value, const char *param_name)
  * cannot be converted correctly, this function elog's an ERROR and thus
  * doesn't return.
  */
-char *pgxcrypto_to_base64(const unsigned char *input, int length)
+char *pwhash_to_base64(const unsigned char *input, int length)
 {
 	const int pl = pg_b64_enc_len(length);
 	char *output = palloc0(pl + 1);
@@ -150,13 +150,13 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
 	/*
 	 * pg_b64_encode() always pads, check if we have to deal with it.
 	 */
-	if (pgxcrypto_setting_always_pad_base64)
+	if (pwhash_setting_always_pad_base64)
 	{
 		return output;
 	}
 
 	/* In case padding is not requested */
-	return pgxcrypto_unpad_base64(output, ol, &unpd_len);
+	return pwhash_unpad_base64(output, ol, &unpd_len);
 }
 
 /*
@@ -169,7 +169,7 @@ char *pgxcrypto_to_base64(const unsigned char *input, int length)
  *
  * outlen will return the number of decoded bytes.
  */
-unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
+unsigned char *pwhash_from_base64(const char *input, int length, int *outlen)
 {
 	int            pd_len = length; /* padded length */
 	int            ol;
@@ -177,17 +177,17 @@ unsigned char *pgxcrypto_from_base64(const char *input, int length, int *outlen)
 	unsigned char *output;
 
 	/* Pad input if necessary */
-	padded = pgxcrypto_pad_base64(input, length, &pd_len);
+	padded = pwhash_pad_base64(input, length, &pd_len);
 	ol = pg_b64_dec_len(pd_len);
-	output = (unsigned char *) palloc0(ol); /* +1 null byte */
+	output = (unsigned char *) palloc0(ol + 1); /* +1 null byte */
 
 	*outlen = pg_b64_decode(padded, pd_len, output, ol);
 
 	return output;
 }
 
-struct pgxcrypto_option * check_option(const char *key,
-									   struct pgxcrypto_option *options,
+struct pwhash_option * check_option(const char *key,
+									   struct pwhash_option *options,
 									   size_t numoptions,
 									   bool error_on_mismatch)
 {
@@ -200,7 +200,7 @@ struct pgxcrypto_option * check_option(const char *key,
 
 	for (i = 0; i < numoptions; i++) {
 
-		struct pgxcrypto_option option = options[i];
+		struct pwhash_option option = options[i];
 
 		if ((strncmp(key, option.name, strlen(option.name)) == 0)
 			|| (strncmp(key, option.alias, strlen(option.alias)) == 0))
@@ -441,7 +441,7 @@ makeOptions(char *opt_str, size_t opt_len,
  * Evaluates an options array.
  */
 Datum
-pgxcrypto_test_options(PG_FUNCTION_ARGS)
+pwhash_test_options(PG_FUNCTION_ARGS)
 {
 	Datum arg = PG_GETARG_DATUM(0);
 	ArrayType *array = DatumGetArrayTypeP(arg);
@@ -475,7 +475,7 @@ Datum
 xcrypt(PG_FUNCTION_ARGS)
 {
 	text *salt     = PG_GETARG_TEXT_PP(1);
-	struct pgxcrypto_magic *algo;
+	struct pwhash_magic *algo;
 	char *salt_cstr;
 
 	if (PG_ARGISNULL(0))
@@ -536,7 +536,7 @@ xgen_salt(PG_FUNCTION_ARGS)
 	ArrayType *optarray  = DatumGetArrayTypeP(argoptions);
 	char      *crypt_name         = text_to_cstring(crypt_opt);
 	StringInfo salt               = NULL;
-	struct pgxcrypto_magic *magic = NULL;
+	struct pwhash_magic *magic = NULL;
 
 	int    noptions;
 	Datum *options;
@@ -583,7 +583,7 @@ xgen_salt(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
-argon2_digest_backend_t pgxcrypto_get_digest_backend(void)
+argon2_digest_backend_t pwhash_get_digest_backend(void)
 {
 	return argon2_backend;
 }
@@ -591,22 +591,22 @@ argon2_digest_backend_t pgxcrypto_get_digest_backend(void)
 void
 _PG_init(void)
 {
-	DefineCustomEnumVariable("pgxcrypto.argon2_default_backend",
+	DefineCustomEnumVariable("pg_pwhash.argon2_default_backend",
 						 "Selects the default backend to use for argon2 hashing",
 						 NULL,
 						 &argon2_backend,
 						 ARGON2_BACKEND_TYPE_LIBARGON2,
-						 pgxcrypto_argon2_backend_option,
+						 pwhash_argon2_backend_option,
 						 PGC_USERSET,
 						 0,
 						 NULL,
 						 NULL,
 						 NULL);
 
-	DefineCustomBoolVariable("pgxcrypto.always_pad_base64",
+	DefineCustomBoolVariable("pg_pwhash.always_pad_base64",
 							 "Forces base64 output to be padded, the default is on",
 							 NULL,
-							 &pgxcrypto_setting_always_pad_base64,
+							 &pwhash_setting_always_pad_base64,
 							 false,
 							 PGC_USERSET,
 							 0,

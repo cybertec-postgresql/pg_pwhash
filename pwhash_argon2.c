@@ -10,10 +10,10 @@
 
 #include "argon2.h"
 
-#include "pgxcrypto_pwhash.h"
-#include "pgxcrypto_argon2.h"
+#include "pg_pwhash.h"
+#include "pwhash_argon2.h"
 
-#ifdef _PGXCRYPTO_ARGON2_OSSL_SUPPORT
+#ifdef _PWHASH_ARGON2_OSSL_SUPPORT
 #include "openssl/core_names.h"
 #include "openssl/params.h"
 #include "openssl/thread.h"
@@ -58,19 +58,19 @@
  */
 
 /* Min threads allwoed for hashing */
-#define PGXCRYPTO_ARGON2_MIN_THREADS 1
+#define PWHASH_ARGON2_MIN_THREADS 1
 
 /* Max threads allowed for hashing */
-#define PGXCRYPTO_ARGON2_MAX_THREADS 1024
+#define PWHASH_ARGON2_MAX_THREADS 1024
 
 /* Min number of lanes */
-#define PGXCRYPTO_ARGON2_MIN_LANES PGXCRYPTO_ARGON2_MIN_THREADS
+#define PWHASH_ARGON2_MIN_LANES PWHASH_ARGON2_MIN_THREADS
 
 /* Max number of lanes */
-#define PGXCRYPTO_ARGON2_MAX_LANES PGXCRYPTO_ARGON2_MAX_THREADS
+#define PWHASH_ARGON2_MAX_LANES PWHASH_ARGON2_MAX_THREADS
 
 /* Min number for memcost (memory size) */
-#define PGXCRYPTO_ARGON2_MIN_MEMCOST 8
+#define PWHASH_ARGON2_MIN_MEMCOST 8
 
 /*
  * Max number for memcost (memory size)
@@ -83,23 +83,23 @@
  * outside our control in the hashing libraries, so be sure we don't allow
  * arbitrary large values.
  */
-#define PGXCRYPTO_ARGON2_MAX_MEMCOST 0x3fffffff
+#define PWHASH_ARGON2_MAX_MEMCOST 0x3fffffff
 
 /* Min number of computation rounds */
-#define PGXCRYPTO_ARGON2_MIN_ROUNDS 1
+#define PWHASH_ARGON2_MIN_ROUNDS 1
 
 /* Max number of computation rounds */
-#define PGXCRYPTO_ARGON2_MAX_ROUNDS INT_MAX
+#define PWHASH_ARGON2_MAX_ROUNDS INT_MAX
 
 /* Min size of digest */
-#define PGXCRYPTO_ARGON2_MIN_HASH_LEN 1
+#define PWHASH_ARGON2_MIN_HASH_LEN 1
 
 /*
  * Max size of digest
  *
  * Translates to
  */
-#define PGXCRYPTO_ARGON2_MAX_HASH_LEN 0x00ffffff
+#define PWHASH_ARGON2_MAX_HASH_LEN 0x00ffffff
 
 /*
  * Default Argon2 version
@@ -130,28 +130,28 @@ static StringInfo
 xgen_salt_argon_internal(Datum *options,
 						 int numoptions);
 
-PG_FUNCTION_INFO_V1(pgxcrypto_argon2);
+PG_FUNCTION_INFO_V1(pwhash_argon2);
 
 /* Keep that in sync with below options array */
 #define NUM_ARGON2_OPTIONS 7
 
-static struct pgxcrypto_option argon2_options[] =
+static struct pwhash_option argon2_options[] =
 {
-		{ "threads", "p", INT4OID, PGXCRYPTO_ARGON2_MIN_THREADS,
-		  PGXCRYPTO_ARGON2_MAX_THREADS, { ._int_value = ARGON2_THREADS } },
-		{ "lanes", "l", INT4OID, PGXCRYPTO_ARGON2_MIN_LANES,
-		  PGXCRYPTO_ARGON2_MAX_LANES, { ._int_value = ARGON2_MEMORY_LANES } },
-		{ "memcost", "m", INT4OID, PGXCRYPTO_ARGON2_MIN_MEMCOST,
-		  PGXCRYPTO_ARGON2_MAX_MEMCOST, { ._int_value = ARGON2_MEMORY_COST } },
-		{ "rounds", "t", INT4OID, PGXCRYPTO_ARGON2_MIN_ROUNDS,
-		  PGXCRYPTO_ARGON2_MAX_ROUNDS, { ._int_value = ARGON2_ROUNDS } },
-		{ "size", "size", INT4OID, PGXCRYPTO_ARGON2_MIN_HASH_LEN,
-		  PGXCRYPTO_ARGON2_MAX_HASH_LEN, { ._int_value = ARGON2_HASH_LEN } },
+		{ "threads", "p", INT4OID, PWHASH_ARGON2_MIN_THREADS,
+		  PWHASH_ARGON2_MAX_THREADS, { ._int_value = ARGON2_THREADS } },
+		{ "lanes", "l", INT4OID, PWHASH_ARGON2_MIN_LANES,
+		  PWHASH_ARGON2_MAX_LANES, { ._int_value = ARGON2_MEMORY_LANES } },
+		{ "memcost", "m", INT4OID, PWHASH_ARGON2_MIN_MEMCOST,
+		  PWHASH_ARGON2_MAX_MEMCOST, { ._int_value = ARGON2_MEMORY_COST } },
+		{ "rounds", "t", INT4OID, PWHASH_ARGON2_MIN_ROUNDS,
+		  PWHASH_ARGON2_MAX_ROUNDS, { ._int_value = ARGON2_ROUNDS } },
+		{ "size", "size", INT4OID, PWHASH_ARGON2_MIN_HASH_LEN,
+		  PWHASH_ARGON2_MAX_HASH_LEN, { ._int_value = ARGON2_HASH_LEN } },
 
-		/* Specific parameters to pgxcrypto */
+		/* Specific parameters to pg_pwhash */
 		{ "output_format", "output_format", -1, -1,
 		  INT4OID, { ._int_value = ARGON2_OUTPUT_BASE64 } },
-		/* Default backend should be kept in sync with the GUC pgxcrypto.argon2_backend */
+		/* Default backend should be kept in sync with the GUC pg_pwhash.argon2_backend */
 		{ "backend", "backend", INT4OID, -1, -1,
 		  { ._int_value = ARGON2_BACKEND_TYPE_LIBARGON2 } }
 };
@@ -160,7 +160,7 @@ static struct pgxcrypto_option argon2_options[] =
 
 static
 void simple_salt_parser_init(struct parse_salt_info *pinfo,
-							 struct pgxcrypto_option *options,
+							 struct pwhash_option *options,
 							 size_t numoptions,
 							 unsigned int argon2_version);
 
@@ -200,7 +200,7 @@ void _argon2_apply_options(Datum *options,
 	*size        = ARGON2_HASH_LEN;
 
 	*output_format           = ARGON2_OUTPUT_BASE64;
-	*backend                 = pgxcrypto_get_digest_backend();
+	*backend                 = pwhash_get_digest_backend();
 	*explicit_backend_option = false;
 
 	for (i = 0; i < numoptions; i++)
@@ -212,7 +212,7 @@ void _argon2_apply_options(Datum *options,
 
 		if (sep)
 		{
-			struct pgxcrypto_option *opt;
+			struct pwhash_option *opt;
 
 			/* Make sure string is null terminated */
 			*sep++ = '\0';
@@ -229,7 +229,7 @@ void _argon2_apply_options(Datum *options,
 					*threads = pg_strtoint32(sep);
 
 					/* Check allowed values for min/max */
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *threads,
 										   opt->alias);
@@ -262,7 +262,7 @@ void _argon2_apply_options(Datum *options,
 				{
 					*lanes = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *lanes,
 										   opt->alias);
@@ -287,7 +287,7 @@ void _argon2_apply_options(Datum *options,
 				{
 					*memory_cost = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *memory_cost,
 										   opt->alias);
@@ -299,7 +299,7 @@ void _argon2_apply_options(Datum *options,
 				{
 					*rounds = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *rounds,
 										   opt->alias);
@@ -312,7 +312,7 @@ void _argon2_apply_options(Datum *options,
 				{
 					*size = pg_strtoint32(sep);
 
-					pgxcrypto_check_minmax(opt->min,
+					pwhash_check_minmax(opt->min,
 										   opt->max,
 										   *size,
 										   opt->alias);
@@ -373,7 +373,7 @@ void _argon2_apply_options(Datum *options,
 
 static
 void simple_salt_parser_init(struct parse_salt_info *pinfo,
-							 struct pgxcrypto_option *options,
+							 struct pwhash_option *options,
 							 size_t numoptions,
 							 unsigned int argon2_version)
 {
@@ -381,8 +381,8 @@ void simple_salt_parser_init(struct parse_salt_info *pinfo,
 	pinfo->magic_len    = strlen(pinfo->magic);
 
 	/* Record optional version info for selected argon2 version */
-	memset(pinfo->algo_info, '\0', PGXCRYPTO_ALGO_INFO_LEN + 1);
-	pg_snprintf(pinfo->algo_info, PGXCRYPTO_ALGO_INFO_LEN, "v=%u$",
+	memset(pinfo->algo_info, '\0', PWHASH_ALGO_INFO_LEN + 1);
+	pg_snprintf(pinfo->algo_info, PWHASH_ALGO_INFO_LEN, "v=%u$",
 				argon2_version);
 	pinfo->algo_info_len = strlen(pinfo->algo_info);
 
@@ -509,8 +509,12 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 		elog(ERROR, "cannot generate random bytes for salt");
 	}
 
+	/* TODO: Check for invalid bytes. Investigate passing the salt as hexsalt to OpenSSL:
+	 * https://docs.openssl.org/1.1.1/man3/EVP_PKEY_CTX_set_scrypt_N/
+	 */
+
 	/* Convert binary string to base64 */
-	salt_encoded = pgxcrypto_to_base64(salt_buf, ARGON2_DEFAULT_SALT_LEN);
+	salt_encoded = pwhash_to_base64(salt_buf, ARGON2_DEFAULT_SALT_LEN);
 
 	/*
 	 * Prepare preamble. We don't apply the magic string blindly, check it
@@ -599,7 +603,7 @@ text *argon2_internal_libargon2(const char *magic,
 	 *      can't exceed ARGON2_SALT_MAX_LEN.
 	 */
 
-	salt_decoded = pgxcrypto_from_base64(salt,
+	salt_decoded = pwhash_from_base64(salt,
 										 (int)strlen(salt),
 										 &salt_decoded_len);
 
@@ -657,7 +661,7 @@ text *argon2_internal_libargon2(const char *magic,
 			char  *resb64;
 			size_t encoded_size;
 
-			resb64 = pgxcrypto_to_base64(hash, size);
+			resb64 = pwhash_to_base64(hash, size);
 			encoded_size = strlen(resb64);
 
 			result = (text *) palloc(encoded_size + VARHDRSZ);
@@ -708,7 +712,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 						   argon2_output_format_t format,
 						   unsigned int argon2_version)
 {
-#ifdef 	_PGXCRYPTO_ARGON2_OSSL_SUPPORT
+#ifdef 	_PWHASH_ARGON2_OSSL_SUPPORT
 	EVP_KDF     *ossl_kdf     = NULL;
 	EVP_KDF_CTX *ossl_kdf_ctx = NULL;
 	text        *result       = NULL;
@@ -729,7 +733,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 	 * XXX: It should be safe to cast the salt length to int, since
 	 *      we can't exceed ARGON2_SALT_MAX_LEN.
 	 */
-	salt_decoded = pgxcrypto_from_base64(salt, strlen(salt), &salt_decoded_len);
+	salt_decoded = pwhash_from_base64(salt, strlen(salt), &salt_decoded_len);
 
 	/* The following code is taken from OpenSSL KDF documentation for
 	 * ARGON2 and adjusted for our needs, see
@@ -767,16 +771,19 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 
 	if ((ossl_kdf = EVP_KDF_fetch(NULL, ossl_argon2_name, NULL)) == NULL)
 	{
+		elog(WARNING, "cannot fetch %s KDF", ossl_argon2_name);
 		goto err;
 	}
 
 	if ((ossl_kdf_ctx = EVP_KDF_CTX_new(ossl_kdf)) == NULL)
 	{
+		elog(WARNING, "cannot create KDF context");
 		goto err;
 	}
 
 	if (EVP_KDF_derive(ossl_kdf_ctx, output, size, parameters) != 1)
 	{
+		elog(WARNING, "cannot derive key");
 		goto err;
 	}
 
@@ -789,7 +796,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 			char  *resb64;
 			size_t encoded_size;
 
-			resb64 = pgxcrypto_to_base64(output, size);
+			resb64 = pwhash_to_base64(output, size);
 			encoded_size = strlen(resb64);
 
 			result = (text *) palloc(encoded_size + VARHDRSZ);
@@ -830,14 +837,14 @@ err:
 #else
 	ereport(ERROR,
 			errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			errmsg("openssl backend not available in this version of pgxcrypto_pwhash"),
+			errmsg("openssl backend not available in this version of pg_pwhash"),
 			errhint("This requires OpenSSL version >= 3.2.0"));
 
 #endif
 }
 
 Datum
-pgxcrypto_argon2(PG_FUNCTION_ARGS)
+pwhash_argon2(PG_FUNCTION_ARGS)
 {
 	Datum *options = NULL;
 	size_t numoptions = 0;
@@ -1090,5 +1097,5 @@ pgxcrypto_argon2(PG_FUNCTION_ARGS)
 Datum
 xcrypt_argon2(Datum password, Datum salt)
 {
-	return DirectFunctionCall2(pgxcrypto_argon2, password, salt);
+	return DirectFunctionCall2(pwhash_argon2, password, salt);
 }

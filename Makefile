@@ -1,11 +1,11 @@
 PG_CONFIG ?= pg_config
-MODULE_big = pgxcrypto_pwhash
-OBJS = pgxcrypto_yescrypt.o pgxcrypto_argon2.o pgxcrypto_scrypt.o pgxcrypto_pwhash.o $(WIN32RES)
-PGFILEDESC = "pgxcrypto_pwhash - An implementation for advanced password hashing"
+MODULE_big = pg_pwhash
+OBJS = pwhash_yescrypt.o pwhash_argon2.o pwhash_scrypt.o pg_pwhash.o $(WIN32RES)
+PGFILEDESC = "pg_pwhash - An implementation for advanced password hashing"
 
-EXTENSION = pgxcrypto_pwhash
-DATA = pgxcrypto_pwhash--1.0.sql
-DOCS = pgxcrypto_pwhash.md
+EXTENSION = pg_pwhash
+DATA = pg_pwhash--1.0.sql
+DOCS = README.md
 
 REGRESS = pgxcrypto
 

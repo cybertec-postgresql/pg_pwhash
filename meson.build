@@ -1,4 +1,4 @@
-project('pgxcrypto_pwhash', ['c'], version: '1.0')
+project('pg_pwhash', ['c'], version: '1.0')
 
 pg_config = find_program('pg_config')
 build_args = []
@@ -21,8 +21,8 @@ pgxcrypto_libm_dep = cc.find_library('m', required: true)
 # need libcrypt
 pgxcrypto_crypt_dep = cc.find_library('crypt', required: true)
 
-install_data('pgxcrypto_pwhash.control',
-             'pgxcrypto_pwhash--1.0.sql',
+install_data('pg_pwhash.control',
+             'pg_pwhash--1.0.sql',
              install_dir: sharedir / 'extension',
             )
 
@@ -66,8 +66,8 @@ int main(int argc, char **argv)
 '''
 
     if cc.links(code, args: '-lssl', name: 'check if OpenSSL provides Argon2 KDF support')
-        build_args += '-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1'
-        message('setting build flag -D"_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1"')
+        build_args += '-D_PWHASH_ARGON2_OSSL_SUPPORT=1'
+        message('setting build flag -D"_PWHASH_ARGON2_OSSL_SUPPORT=1"')
     endif
 
 else
@@ -153,8 +153,8 @@ int main(int argc, char **argv)
 result = cc.run(code, args: '-lcrypt', name: 'crypt() scrypt support')
 
 if result.returncode() == 0
-    build_args += '-D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1'
-    message('setting build flag _PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1')
+    build_args += '-D_PWHASH_CRYPT_SCRYPT_SUPPORT=1'
+    message('setting build flag _PWHASH_CRYPT_SCRYPT_SUPPORT=1')
 else
     message('crypt() support for scrypt not available')
 endif
@@ -182,15 +182,15 @@ int main(int argc, char **argv)
 result = cc.run(code, args: '-lcrypt', name: 'crypt() yescrypt support')
 
 if result.returncode() == 0
-    build_args += '-D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1'
-    message('setting build flag _PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1')
+    build_args += '-D_PWHASH_CRYPT_YESCRYPT_SUPPORT=1'
+    message('setting build flag _PWHASH_CRYPT_YESCRYPT_SUPPORT=1')
 else
     message('crypt() support for yescrypt not available')
 endif
 
 # #################################################################################################
 
-regress_tests = [ 'pgxcrypto' ]
+regress_tests = [ 'pg_pwhash' ]
 
 test('regress',
      pg_regress,
@@ -199,8 +199,8 @@ test('regress',
            ] + regress_tests,
     )
 
-shared_module('pgxcrypto_pwhash',
-              'pgxcrypto_scrypt.c', 'pgxcrypto_yescrypt.c', 'pgxcrypto_argon2.c',  'pgxcrypto_pwhash.c',
+shared_module('pg_pwhash',
+              'pwhash_scrypt.c', 'pwhash_yescrypt.c', 'pwhash_argon2.c',  'pg_pwhash.c',
               c_args: build_args,
               include_directories: [includedir_server],
               install: true,
