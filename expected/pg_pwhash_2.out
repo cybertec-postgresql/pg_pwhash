@@ -1,6 +1,6 @@
 CREATE EXTENSION pg_pwhash;
 --
--- Try settings for pwhash.argon2_default_backend
+-- Try settings for pg_pwhash.argon2_default_backend
 --
 -- should fail
 SET pg_pwhash.argon2_default_backend = 'blabla';
@@ -9,14 +9,14 @@ HINT:  Available values: openssl, libargon2.
 -- should succeed
 SET pg_pwhash.argon2_default_backend = 'openssl';
 SHOW pg_pwhash.argon2_default_backend;
- pg_pwhash.argon2_default_backend
+ pg_pwhash.argon2_default_backend 
 ----------------------------------
  openssl
 (1 row)
 
 SET pg_pwhash.argon2_default_backend = 'libargon2';
 SHOW pg_pwhash.argon2_default_backend;
- pg_pwhash.argon2_default_backend
+ pg_pwhash.argon2_default_backend 
 ----------------------------------
  libargon2
 (1 row)
@@ -24,7 +24,7 @@ SHOW pg_pwhash.argon2_default_backend;
 -- back to default
 RESET pg_pwhash.argon2_default_backend;
 SHOW pg_pwhash.argon2_default_backend;
- pg_pwhash.argon2_default_backend
+ pg_pwhash.argon2_default_backend 
 ----------------------------------
  libargon2
 (1 row)
@@ -327,7 +327,7 @@ DELETE FROM pwhash_test_argon2;
 -- switch hash backends in between
 RESET pg_pwhash.argon2_default_backend;
 SHOW pg_pwhash.argon2_default_backend;
- pg_pwhash.argon2_default_backend
+ pg_pwhash.argon2_default_backend 
 ----------------------------------
  libargon2
 (1 row)
@@ -336,7 +336,7 @@ INSERT INTO pwhash_test_argon2(pw, salt) VALUES('password', pwhash_gen_salt('arg
 UPDATE pwhash_test_argon2 SET hash = pwhash_argon2('password', salt) WHERE pw = 'password';
 SET pg_pwhash.argon2_default_backend TO 'libargon2';
 SHOW pg_pwhash.argon2_default_backend;
- pg_pwhash.argon2_default_backend
+ pg_pwhash.argon2_default_backend 
 ----------------------------------
  libargon2
 (1 row)
