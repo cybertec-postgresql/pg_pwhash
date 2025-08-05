@@ -3,6 +3,9 @@ project('pg_pwhash', ['c'], version: '1.0')
 pg_config = find_program('pg_config')
 build_args = []
 
+pg_config_version_str = run_command(pg_config, '--version', check: true).stdout().strip()
+message('pg_config version: ' + pg_config_version_str)
+
 bindir = run_command(pg_config, '--bindir', check: true).stdout().strip()
 includedir_server = run_command(pg_config, '--includedir-server', check: true).stdout().strip()
 pkglibdir = run_command(pg_config, '--pkglibdir', check: true).stdout().strip()
