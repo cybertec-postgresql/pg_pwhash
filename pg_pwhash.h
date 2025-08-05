@@ -1,8 +1,6 @@
 #ifndef PWHASH_PWHASH_H
 #define PWHASH_PWHASH_H
 
-#include "fmgr.h"
-
 /*
  * Backend type to use for Argon2, currently
  *
