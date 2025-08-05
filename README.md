@@ -494,3 +494,13 @@ SELECT pwhash_argon2('password', pwhash_gen_salt('argon2d', 'rounds=12', 'backen
  $argon2d$v=19$m=4096,t=12,p=1,backend=openssl$AiCwwSsJrgcF0cYVjI8J7g$D4sRQc8bDOe8eYkseJAp+/6f1pUgWLbGw4Irs6EmKbA
 (1 row
 ```
+
+# Security
+
+Passing passwords over to a database, especially if remote requires some security considerations.
+Clients should always only use SSL-encrypted connections to PostgreSQL, transferring sensitive data over unencrypted
+channels could leak these sensitive information. This is true for probably any data that is transferred
+and may contain personal and other information.
+
+It is also important to consider database logs, since logged SQL statements can contain this information and
+ship to other channels which aren't treated in the same security context than the database itself.
