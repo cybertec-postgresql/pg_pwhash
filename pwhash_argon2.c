@@ -603,9 +603,9 @@ text *argon2_internal_libargon2(const char *magic,
 	 *      can't exceed ARGON2_SALT_MAX_LEN.
 	 */
 
-	salt_decoded = pwhash_from_base64(salt,
-										 (int)strlen(salt),
-										 &salt_decoded_len);
+	salt_decoded = pwhash_from_base64((unsigned char *)salt,
+									  (int)strlen(salt),
+									  &salt_decoded_len);
 
 	/*
 	 * Taken from
@@ -733,7 +733,7 @@ text *argon2_internal_ossl(const char *ossl_argon2_name,
 	 * XXX: It should be safe to cast the salt length to int, since
 	 *      we can't exceed ARGON2_SALT_MAX_LEN.
 	 */
-	salt_decoded = pwhash_from_base64(salt, strlen(salt), &salt_decoded_len);
+	salt_decoded = pwhash_from_base64((unsigned char *)salt, strlen(salt), &salt_decoded_len);
 
 	/* The following code is taken from OpenSSL KDF documentation for
 	 * ARGON2 and adjusted for our needs, see

@@ -685,9 +685,9 @@ pwhash_scrypt(PG_FUNCTION_ARGS)
 	memcpy(salt_parsed, pinfo.salt, pinfo.salt_len);
 
 	elog(DEBUG2, "parsed salt: \"%s\"", salt_parsed);
-	salt_decoded = (char *)pwhash_from_base64(salt_parsed,
-												 (int)(pinfo.salt_len),
-												 &salt_decoded_len);
+	salt_decoded = (char *)pwhash_from_base64((unsigned char *)salt_parsed,
+											  (int)(pinfo.salt_len),
+											  &salt_decoded_len);
 
 	/* Sanity check, salt must not be null. Should not happen ... */
 	if (salt_decoded == NULL)

@@ -67,7 +67,7 @@ pwhash_to_base64(const unsigned char *input, int length);
  * Routine to decode a base64 into a binary string.
  */
 unsigned char
-*pwhash_from_base64(const char *input, int length, int *outlen);
+*pwhash_from_base64(const unsigned char *input, int length, int *outlen);
 
 struct pwhash_option
 *check_option(const char *key,

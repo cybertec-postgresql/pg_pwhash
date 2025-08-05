@@ -88,17 +88,17 @@ pwhash_unpad_base64(char *input, int len, int *unpad_len)
  *
  * Otherwise a palloc'ed buffer is returned with padded '=' at the end.
  */
-static char *
-pwhash_pad_base64(const char *input, int length, int *pd_len)
+static unsigned char *
+pwhash_pad_base64(const unsigned char *input, int length, int *pd_len)
 {
 	int   pads = ( 4 - (length % 4) );
-	char *padded;
+	unsigned char *padded;
 
 	/* Fast path if no padding required */
 	if (pads == 4)
 	{
 		*pd_len = length;
-		return (char *)input;
+		return (unsigned char *)input;
 	}
 
 	*pd_len = length + pads;
@@ -169,11 +169,11 @@ char *pwhash_to_base64(const unsigned char *input, int length)
  *
  * outlen will return the number of decoded bytes.
  */
-unsigned char *pwhash_from_base64(const char *input, int length, int *outlen)
+unsigned char *pwhash_from_base64(const unsigned char *input, int length, int *outlen)
 {
 	int            pd_len = length; /* padded length */
 	int            ol;
-	char          *padded;
+	unsigned char *padded;
 	unsigned char *output;
 
 	/* Pad input if necessary */
@@ -181,7 +181,7 @@ unsigned char *pwhash_from_base64(const char *input, int length, int *outlen)
 	ol = pg_b64_dec_len(pd_len);
 	output = (unsigned char *) palloc0(ol + 1); /* +1 null byte */
 
-	*outlen = pg_b64_decode(padded, pd_len, output, ol);
+	*outlen = pg_b64_decode((char *) padded, pd_len, output, ol);
 
 	return output;
 }
