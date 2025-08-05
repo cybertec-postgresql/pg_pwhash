@@ -56,7 +56,7 @@ The following hashing algorithms are supported if all requirements are met:
 - libargon2
 - libscrypt
 - `libxcrypt` support
-- Currently PostgreSQL 17 or 18 required
+- Currently supports PostgreSQL >= 13
 
 `pg_pwhash` can be configured to compile of one or more of the requirements are not met, though specific
 functionality may be missing then (see table below).
@@ -143,7 +143,7 @@ You can also try to build with the `meson` build system, which tries to configur
 builds automatically, so that all combinations can be used. Having support for multiple backends like
 `libargon2` or `OpenSSL` at the same time was one design goal of this extension. Users can then
 decide which kind of backend they want to use to hash the password with a specific algorithm.
-Currently `pg_pwhash` requires at least PostgreSQL 17.
+Currently `pg_pwhash` requires at least PostgreSQL 13 (this is the minimum tested version so far).
 
 # Usage
 

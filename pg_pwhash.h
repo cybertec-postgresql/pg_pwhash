@@ -1,6 +1,8 @@
 #ifndef PWHASH_PWHASH_H
 #define PWHASH_PWHASH_H
 
+#include <lib/stringinfo.h>
+
 /*
  * Backend type to use for Argon2, currently
  *

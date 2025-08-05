@@ -6,7 +6,12 @@
 #include "fmgr.h"
 #include "catalog/pg_type_d.h"
 #include "utils/builtins.h"
-#include "varatt.h"
+
+#if PG_VERSION_NUM >= 160000
+#include <varatt.h>
+#else
+#include <postgres.h>
+#endif
 
 #include "argon2.h"
 
@@ -575,7 +580,8 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 	}
 
 	appendBinaryStringInfo(result, buf->data, buf->len);
-	destroyStringInfo(buf);
+	pfree(buf->data);
+	pfree(buf);
 
 	/*
 	 * Now the generated salt string.

@@ -9,7 +9,12 @@
 
 #include "catalog/pg_type_d.h"
 #include "utils/builtins.h"
-#include "varatt.h"
+
+#if PG_VERSION_NUM >= 160000
+#include <varatt.h>
+#else
+#include <postgres.h>
+#endif
 
 #include "libscrypt.h"
 
@@ -768,7 +773,8 @@ pwhash_scrypt(PG_FUNCTION_ARGS)
 	/* free our stuff */
 	pfree(salt_parsed);
 	pfree(salt_decoded);
-	destroyStringInfo(resbuf);
+	pfree(resbuf->data);
+	pfree(resbuf);
 
 	PG_RETURN_TEXT_P(result);
 }

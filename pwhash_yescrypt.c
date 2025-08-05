@@ -1,11 +1,16 @@
 #include "pwhash_yescrypt.h"
 
 #include <crypt.h>
-#include <varatt.h>
-#include <utils/builtins.h>
 
-#include "catalog/pg_type_d.h"
+#if PG_VERSION_NUM >= 160000
+#include <varatt.h>
+#else
+#include <postgres.h>
+#endif
+
 #include "fmgr.h"
+#include "catalog/pg_type_d.h"
+#include <utils/builtins.h>
 
 #ifndef _PWHASH_CRYPT_YESCRYPT_SUPPORT
 

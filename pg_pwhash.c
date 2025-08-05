@@ -454,7 +454,8 @@ pwhash_test_options(PG_FUNCTION_ARGS)
 	int    noptions;
 	int    i;
 
-	deconstruct_array_builtin(array, TEXTOID, &options, NULL, &noptions);
+	deconstruct_array(array, TEXTOID, -1, false, TYPALIGN_INT, &options, NULL, &noptions);
+	//deconstruct_array_builtin(array, TEXTOID, &options, NULL, &noptions);
 
 	for (i = 0; i < noptions; i++)
 	{
@@ -548,7 +549,8 @@ xgen_salt(PG_FUNCTION_ARGS)
 	text  *result;
 
 	/* Construct array */
-	deconstruct_array_builtin(optarray, TEXTOID, &options, NULL, &noptions);
+	deconstruct_array(optarray, TEXTOID, -1, false, TYPALIGN_INT, &options, NULL, &noptions);
+	//deconstruct_array_builtin(optarray, TEXTOID, &options, NULL, &noptions);
 
 	/*
 	 * First argument is the requested algorithm
