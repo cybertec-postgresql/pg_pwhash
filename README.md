@@ -16,6 +16,7 @@
   * [Argon2 salt parameters](#argon2-salt-parameters)
     * [Extensions to Argon2 salt parameters.](#extensions-to-argon2-salt-parameters)
     * [Examples using explicit argon2 parameters for hashing](#examples-using-explicit-argon2-parameters-for-hashing)
+    * [Choices of backends](#choices-of-backends)
 * [Scrypt password hashing](#scrypt-password-hashing)
   * [Scrypt hashes with crypt backend](#scrypt-hashes-with-crypt-backend)
   * [Scrypt hashes with the libscrypt](#scrypt-hashes-with-the-libscrypt)
@@ -23,6 +24,7 @@
   * [Scrypt salt parameters](#scrypt-salt-parameters)
     * [Parameters supported by the `libscrypt` and `OpenSSL` backend](#parameters-supported-by-the-libscrypt-and-openssl-backend)
     * [Parameters supported by the `crypt` backend](#parameters-supported-by-the-crypt-backend)
+    * [Choice of backends](#choice-of-backends)
 * [Yescrypt password hashing](#yescrypt-password-hashing)
   * [yescrypt hashing example](#yescrypt-hashing-example)
   * [Yescrypt salt parameters](#yescrypt-salt-parameters)
@@ -32,6 +34,7 @@
     * [`pwhash_yescrypt_crypt()` usage](#pwhash_yescrypt_crypt-usage)
     * [`pwhash_scrypt_crypt()` usage](#pwhash_scrypt_crypt-usage)
     * [`pwhash_argon2()` usage](#pwhash_argon2-usage)
+* [Security](#security)
 <!-- TOC -->
 
 # About pg_pwhash
@@ -286,6 +289,16 @@ a recommended read if you are unsure whether you need to adjust the defaults. Pl
 currently follows for most of the default settings Python's 
 [passlib](https://passlib.readthedocs.io/en/stable/lib/passlib.hash.argon2.html#format-algorithm).
 
+### Choices of backends
+
+`Argon2` hashes can be derived by using either the `libargon2` or `OpenSSL` backends. 
+Though on a machine with AMD Ryzen 9 5950X CPU `libargon2` seems to have a slight  performance advantage
+when hashing a list of random generated MD5 strings with default settings.
+
+The following graph shows the difference:
+
+![alt text](benchmark/argon2_libargon2_openssl_10000.png "libargon2 vs. OpenSSL")
+
 # Scrypt password hashing
 
 `scrypt` password hashes are supported by currently three backends: `crypt`, `OpenSSL` and `libscrypt`.
@@ -393,6 +406,17 @@ The following parameters can be used by the `crypt` backend:
 - `rounds`: Configures the amount of computing time spent to generate `scrypt` hashes. This also influences
 memory _and_ CPU, so use it with care especially on systems with less resources. A setting of `6` is 
 the default currently. The `rounds` parameter accepts values between `6` and `11` in this context.
+
+### Choice of backends
+
+Users that want to hash input via `scrypt` have the choice between `crypt`, `libscrypt` and `OpenSSL`
+backends. Since `crypt` hashes for `scrypt` aren't compatible, the choice here is easy: If you want
+to create hashes comparable with your platform using `libcrypt` (or `libxcrypt` respectively), you need to
+use `crypt` backend. For hashes generated via `libscrypt` or `OpenSSL` there seems to be a very slight
+performance advantage by using `libscrypt`, as the following figure shows. This was measured on a
+AMD Ryzen 9 5950X CPU with default hashing parameter settings.
+
+![alt text](benchmark/scrypt_libscrypt_openssl_1000.png "libscrypt vs. OpenSSL")
 
 # Yescrypt password hashing
 
