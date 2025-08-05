@@ -509,7 +509,16 @@ StringInfo xgen_salt_argon2(Datum *options, int numoptions, const char *magic)
 		elog(ERROR, "cannot generate random bytes for salt");
 	}
 
-	/* TODO: Check for invalid bytes. Investigate passing the salt as hexsalt to OpenSSL:
+	/* Remove bytes we don't want */
+	for (int i = 0; i < ARGON2_DEFAULT_SALT_LEN; i++)
+	{
+		if (salt_buf[i] == '\0')
+		{
+			salt_buf[i] = 'A';
+		}
+	}
+
+	/* TODO: Investigate passing the salt as hexsalt to OpenSSL:
 	 * https://docs.openssl.org/1.1.1/man3/EVP_PKEY_CTX_set_scrypt_N/
 	 */
 

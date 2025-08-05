@@ -342,6 +342,15 @@ xgen_salt_scrypt(Datum *options, int numoptions, const char *magic)
 		elog(ERROR, "cannot generate random bytes for salt");
 	}
 
+	/* Remove bytes we don't want */
+	for (int i = 0; i < SCRYPT_SALT_MAX_LEN; i++)
+	{
+		if (salt_buf[i] == '\0')
+		{
+			salt_buf[i] = 'A';
+		}
+	}
+
 	/* Convert bytes of the generated salt into base64 */
 	salt_encoded = pwhash_to_base64((const unsigned char*)salt_buf,
 									   SCRYPT_SALT_MAX_LEN);
