@@ -16,6 +16,11 @@ PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
 PG_FUNCTION_INFO_V1(xcrypt);
 
+#if PG_VERSION_NUM < 170000
+#define PWHASH_PGB64_t char *
+#else
+#define PWHASH_PGB64_t unsigned char *
+#endif
 
 /**
  * Enables/disable padding of base64 encoded strings.
@@ -144,7 +149,7 @@ char *pwhash_to_base64(const unsigned char *input, int length)
 {
 	const int pl = pg_b64_enc_len(length);
 	char *output = palloc0(pl + 1);
-	const int ol = pg_b64_encode((unsigned char *)input, length, output, pl);
+	const int ol = pg_b64_encode((PWHASH_PGB64_t)input, length, output, pl);
 	int unpd_len;
 
 	/*
@@ -181,7 +186,7 @@ unsigned char *pwhash_from_base64(const unsigned char *input, int length, int *o
 	ol = pg_b64_dec_len(pd_len);
 	output = (unsigned char *) palloc0(ol + 1); /* +1 null byte */
 
-	*outlen = pg_b64_decode((char *) padded, pd_len, output, ol);
+	*outlen = pg_b64_decode((char *) padded, pd_len, (PWHASH_PGB64_t)output, ol);
 
 	return output;
 }
@@ -579,7 +584,9 @@ xgen_salt(PG_FUNCTION_ARGS)
 	SET_VARSIZE(result, salt->len + VARHDRSZ);
 	memcpy(VARDATA(result), salt->data, salt->len);
 
-	destroyStringInfo(salt);
+	pfree(salt->data);
+	pfree(salt);
+
 	PG_RETURN_TEXT_P(result);
 }
 
