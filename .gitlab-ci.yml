@@ -51,7 +51,7 @@ build-debian12-pgdg:
     - ninja -C build13 install
     - su postgres -c "ninja -C build13 test || (cat /builds/consulting/pgxcrypto_pwhash/build13/regression.diffs && exit 1)"
     - pg_ctlcluster 13 main stop --force
-    - pg_dropcluster 13 main-
+    - pg_dropcluster 13 main
 
 build-rocky8-pgdg-17:
   image: "rockylinux:8"
