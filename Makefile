@@ -15,7 +15,7 @@ include $(PGXS)
 # Add libraries that pgxcrypto_pwhash depends (or might depend) on into the
 # shared library link.  (The order in which you list them here doesn't
 # matter.)
-SHLIB_LINK += $(LIBS) -lcrypt -lscrypt -lm -lcrypto -lz -largon2
+SHLIB_LINK += -lcrypt -lscrypt -lm -lcrypto -lz -largon2
 ifeq ($(PORTNAME), win32)
 SHLIB_LINK += $(filter -leay32, $(LIBS))
 # those must be at the end
