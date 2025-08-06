@@ -16,7 +16,7 @@ PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
 PG_FUNCTION_INFO_V1(xcrypt);
 
-#if PG_VERSION_NUM < 170000
+#if PG_VERSION_NUM < 180000
 #define PWHASH_PGB64_t char *
 #else
 #define PWHASH_PGB64_t unsigned char *
