@@ -1,4 +1,4 @@
-build-debian12-pgdg-17:
+build-debian12-pgdg:
   image: "debian:12"
   before_script:
     - DEBIAN_FRONTEND=noninteractive apt -y update
@@ -6,13 +6,52 @@ build-debian12-pgdg-17:
     - echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
     - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
     - DEBIAN_FRONTEND=noninteractive apt -y update
-    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-17 postgresql-17 libscrypt-dev libargon2-dev gcc make libssl-dev meson
+    - DEBIAN_FRONTEND=noninteractive apt -y install libscrypt-dev libargon2-dev gcc make libssl-dev meson
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-17 postgresql-17
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-16 postgresql-16
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-15 postgresql-15
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-14 postgresql-14
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-13 postgresql-13
   script:
     - pg_ctlcluster 17 main start
-    - su postgres -c "meson setup build"
-    - su postgres -c "ninja -C build"
-    - ninja -C build install
-    - su postgres -c "ninja -C build test || (cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && exit 1)"
+    - su postgres -c "PATH=/usr/lib/postgresql/17/bin:$PATH meson setup build17"
+    - su postgres -c "ninja -C build17"
+    - ninja -C build17 install
+    - su postgres -c "ninja -C build17 test || (cat /builds/consulting/pgxcrypto_pwhash/build17/regression.diffs && exit 1)"
+    - pg_ctlcluster 17 main stop --force
+    - pg_dropcluster 17 main
+    - pg_createcluster -p 5432 16 main
+    - pg_ctlcluster 16 main start
+    - su postgres -c "PATH=/usr/lib/postgresql/16/bin:$PATH meson setup build16"
+    - su postgres -c "ninja -C build16"
+    - ninja -C build16 install
+    - su postgres -c "ninja -C build16 test || (cat /builds/consulting/pgxcrypto_pwhash/build16/regression.diffs && exit 1)"
+    - pg_ctlcluster 16 main stop --force
+    - pg_dropcluster 16 main
+    - pg_createcluster -p 5432 15 main
+    - pg_ctlcluster 15 main start
+    - su postgres -c "PATH=/usr/lib/postgresql/15/bin:$PATH meson setup build15"
+    - su postgres -c "ninja -C build15"
+    - ninja -C build15 install
+    - su postgres -c "ninja -C build15 test || (cat /builds/consulting/pgxcrypto_pwhash/build15/regression.diffs && exit 1)"
+    - pg_ctlcluster 15 main stop --force
+    - pg_dropcluster 15 main
+    - pg_createcluster -p 5432 14 main
+    - pg_ctlcluster 14 main start
+    - su postgres -c "PATH=/usr/lib/postgresql/14/bin:$PATH meson setup build14"
+    - su postgres -c "ninja -C build14"
+    - ninja -C build14 install
+    - su postgres -c "ninja -C build14 test || (cat /builds/consulting/pgxcrypto_pwhash/build14/regression.diffs && exit 1)"
+    - pg_ctlcluster 14 main stop --force
+    - pg_dropcluster 14 main
+    - pg_createcluster -p 5432 13 main
+    - pg_ctlcluster 13 main start
+    - su postgres -c "PATH=/usr/lib/postgresql/13/bin:$PATH meson setup build13"
+    - su postgres -c "ninja -C build13"
+    - ninja -C build13 install
+    - su postgres -c "ninja -C build13 test || (cat /builds/consulting/pgxcrypto_pwhash/build13/regression.diffs && exit 1)"
+    - pg_ctlcluster 13 main stop --force
+    - pg_dropcluster 13 main-
 
 build-rocky8-pgdg-17:
   image: "rockylinux:8"
