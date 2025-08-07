@@ -104,15 +104,16 @@ provided by `pg_pwhash` via the `PROFILE` macro used by `make`:
 - `_PWHASH_ARGON2_OSSL_SUPPORT`: Builds with `Argon2` hash support via `OpenSSL`.
 - `_PWHASH_CRYPT_SCRYPT_SUPPORT`: Enables `crypt()` wrapper for `scrypt`.
 - `_PWHASH_CRYPT_YESCRYPT_SUPPORT`: Enables `yescrypt` password hashing with the `crypt()` wrapper.
+- `_PWHASH_LIBSCRYPT_SUPPORT`: Enables support for hashing with `libscrypt`.
 
 Please note that you need proper library support when enabling those. Otherwise the compilation will
-fail. 
+fail. See the table above for a feature/support matrix on tested platforms.
 
 To finally build the `pg_pwhash` extension use the following command as an example. This enables all
 features via the compiler macros explained above (make sure the `pg_config` tool can be found):
 
 ```shell
-make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1"
+make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
 ```
 
 If you want to built against a specific PostgreSQL version (like on Debian), you can specify the
@@ -120,7 +121,7 @@ If you want to built against a specific PostgreSQL version (like on Debian), you
 
 ```shell
 PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config \
-  make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1"
+  make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
 ```
 
 # Motivation
