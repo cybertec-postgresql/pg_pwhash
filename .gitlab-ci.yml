@@ -91,7 +91,7 @@ build-rocky9-pgdg-17:
     - su postgres -c "ninja -C build test || (cat /builds/consulting/pgxcrypto_pwhash/build/regression.diffs && exit 1)"
 
 build-rocky10-pgdg-17:
-  image: "rockylinux:10"
+  image: "rockylinux/rockylinux:10"
   before_script:
     - dnf -y install epel-release
     - dnf -y config-manager --set-enabled crb
