@@ -97,8 +97,6 @@ build-rocky10-pgdg-17:
     - dnf -y config-manager --set-enabled crb
     - dnf -y install meson gcc libargon2-devel openssl-devel
     - dnf -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-    - dnf -qy module disable postgresql
-    - dnf -y update --refresh
     - dnf -y install postgresql17-server postgresql17-devel
     - su - postgres -c "/usr/pgsql-17/bin/initdb -D /var/lib/pgsql/17/data"
 
