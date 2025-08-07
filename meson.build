@@ -13,7 +13,7 @@ sharedir = run_command(pg_config, '--sharedir', check: true).stdout().strip()
 
 # check for libscrypt
 cc = meson.get_compiler('c')
-pgxcrypto_scrypt_dep = cc.find_library('scrypt', required: true)
+pgxcrypto_scrypt_dep = cc.find_library('scrypt', required: false)
 
 # check for libargon2
 pgxcrypto_argon2_dep = cc.find_library('argon2', required: true)
@@ -29,8 +29,10 @@ install_data('pg_pwhash.control',
              install_dir: sharedir / 'extension',
             )
 
-# check if libscrypt_hash is available
-code = '''#include <libscrypt.h>
+if pgxcrypto_scrypt_dep.found()
+
+   # check if libscrypt_hash is available
+   code = '''#include <libscrypt.h>
 int main(int argc, char **argv)
 {
     char *outbuf;
@@ -39,10 +41,20 @@ int main(int argc, char **argv)
 }
 '''
 
-result = cc.links(code, args: '-lscrypt', name: 'libscrypt_hash() works')
+   result = cc.links(code, args: '-lscrypt', name: 'libscrypt_hash() works')
 
-if not result
-    error('libscrypt_hash() API not supported by libscrypt')
+   if not result
+      error('libscrypt_hash() API not supported by libscrypt')
+   endif
+
+   # we're safe no, enable libscrypt support
+   build_args += '-D_PWHASH_LIBSCRYPT_SUPPORT=1'
+   message('setting build flag -D"_PWHASH_LIBSCRYPT_SUPPORT=1"')
+
+else
+
+   message('disabling libscrypt support since libscrypt is missing')
+
 endif
 
 # #################################################################################################

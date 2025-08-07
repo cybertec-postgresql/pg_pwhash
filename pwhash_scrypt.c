@@ -16,7 +16,9 @@
 #include <postgres.h>
 #endif
 
+#ifdef _PWHASH_LIBSCRYPT_SUPPORT
 #include "libscrypt.h"
+#endif
 
 PG_MODULE_MAGIC;
 
@@ -238,6 +240,9 @@ static StringInfo xgen_gen_salt_string(int rounds,
 	{
 		case SCRYPT_BACKEND_LIBSCRYPT:
 			/* fall through */
+#ifndef _PWHASH_LIBSCRYPT_SUPPORT
+			elog(ERROR, "this version of pg_pwhash was compiled without libscrypt support");
+#endif
 		case SCRYPT_BACKEND_OPENSSL: {
 			if (include_backend_option)
 			{
@@ -495,6 +500,9 @@ _scrypt_apply_options(Datum *options,
 					}
 					else if (strncmp(sep, "libscrypt", strlen(sep)) == 0)
 					{
+#ifndef _PWHASH_LIBSCRYPT_SUPPORT
+						elog(ERROR, "this version of pg_pwhash was compiled without libscrypt support");
+#endif
 						*backend = SCRYPT_BACKEND_LIBSCRYPT;
 					}
 					else
@@ -530,6 +538,9 @@ scrypt_libscrypt_internal(const char *pw,
 	char output[SCRYPT_OUTPUT_VEC_LEN] = {0};
 	char *output_encoded;
 
+#ifndef _PWHASH_LIBSCRYPT_SUPPORT
+	elog(ERROR, "this version of pg_pwhash was compiled without libscrypt support");
+#else
 	if (libscrypt_scrypt((uint8_t *)pw, strlen(pw),
 	                     (uint8_t*)salt, strlen(salt), calc_working_factor(rounds),
 	                     block_size, parallelism,
@@ -537,6 +548,7 @@ scrypt_libscrypt_internal(const char *pw,
 	{
 		elog(ERROR, "could not hash input");
 	}
+#endif
 
 	/* Encode output */
 	output_encoded = pwhash_to_base64((unsigned char *)output, sizeof output);

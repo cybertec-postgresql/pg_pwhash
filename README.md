@@ -70,6 +70,7 @@ libraries/APIs.
 | Debian 11     | X         |                 | X         | X               | X                  | X                |
 | Rocky Linux 8 | X         |                 | X         | X               |                    |                  |
 | Rocky Linux 9 | X         | X               | X         | X               | X                  | X                |
+| Rocky Linux 10| X         | X               |           | X               | X                  | X                |
 
 Like Python's `passlib`, you can select different backends to use for hashing your password, depending
 on the choosen hash algorithm. See below for details.
