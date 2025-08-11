@@ -64,13 +64,14 @@ functionality may be missing then (see table below).
 The following table illustrates tested and supported combinations of Linux and `pg_pwhash` and supported
 libraries/APIs.
 
-|               | libargon2 | OpenSSL(Argon2) | libscrypt | OpenSSL(scrypt) | libcrypt(yescrypt) | libcrypt(scrypt) |
-|---------------|-----------|-----------------|-----------|-----------------|--------------------|------------------|
-| Debian 12     | X         |                 | X         | X               | X                  | X                |
-| Debian 11     | X         |                 | X         | X               | X                  | X                |
-| Rocky Linux 8 | X         |                 | X         | X               |                    |                  |
-| Rocky Linux 9 | X         | X               | X         | X               | X                  | X                |
-| Rocky Linux 10| X         | X               |           | X               | X                  | X                |
+|                | libargon2 | OpenSSL(Argon2) | libscrypt | OpenSSL(scrypt) | libcrypt(yescrypt) | libcrypt(scrypt) |
+|----------------|-----------|-----------------|-----------|-----------------|--------------------|------------------|
+| Debian 13      | X         | X               | X         | X               | X                  | X                |
+| Debian 12      | X         |                 | X         | X               | X                  | X                |
+| Debian 11      | X         |                 | X         | X               | X                  | X                |
+| Rocky Linux 8  | X         |                 | X         | X               |                    |                  |
+| Rocky Linux 9  | X         | X               | X         | X               | X                  | X                |
+| Rocky Linux 10 | X         | X               |           | X               | X                  | X                |
 
 Like Python's `passlib`, you can select different backends to use for hashing your password, depending
 on the choosen hash algorithm. See below for details.
