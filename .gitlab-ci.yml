@@ -1,3 +1,22 @@
+build-debian13-pgdg-17:
+  image: "debian:12"
+  before_script:
+    - DEBIAN_FRONTEND=noninteractive apt -y update
+    - DEBIAN_FRONTEND=noninteractive apt -y install gpg curl lsb-release
+    - echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+    - curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc| gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+    - DEBIAN_FRONTEND=noninteractive apt -y update
+    - DEBIAN_FRONTEND=noninteractive apt -y install libscrypt-dev libargon2-dev gcc make libssl-dev meson
+    - DEBIAN_FRONTEND=noninteractive apt -y install postgresql-server-dev-17 postgresql-17
+  script:
+    - pg_ctlcluster 17 main start
+    - su postgres -c "PATH=/usr/lib/postgresql/17/bin:$PATH meson setup build17"
+    - su postgres -c "ninja -C build17"
+    - ninja -C build17 install
+    - su postgres -c "ninja -C build17 test || (cat /builds/consulting/pgxcrypto_pwhash/build17/regression.diffs && exit 1)"
+    - pg_ctlcluster 17 main stop --force
+    - pg_dropcluster 17 main
+
 build-debian12-pgdg:
   image: "debian:12"
   before_script:
