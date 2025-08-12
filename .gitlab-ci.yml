@@ -1,5 +1,5 @@
 build-debian13-pgdg-17:
-  image: "debian:13"
+  image: "debian:trixie"
   before_script:
     - DEBIAN_FRONTEND=noninteractive apt -y update
     - DEBIAN_FRONTEND=noninteractive apt -y install gpg curl lsb-release
