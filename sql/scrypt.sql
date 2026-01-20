@@ -1,0 +1,64 @@
+--
+-- Checks for scrypt
+--
+-- The hashes we compare here are derived via python's passlib again
+--
+-- h = scrypt.using(salt=bytes("12345678", "utf-8")).hash("password")
+--
+SELECT pwhash_scrypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo';
+
+--
+-- Check if parameters get applied
+--
+-- h = scrypt.using(salt=bytes("12345678", "utf-8")).using=(rounds=8).using(block_size=16).hash("password")
+--
+SELECT pwhash_scrypt('password', '$scrypt$ln=8,r=16,p=1$MTIzNDU2Nzg$tEmA9TbF8lFDbMySWVfYoEqW2ywo6Qr8vu/sHHwVyDs') = '$scrypt$ln=8,r=16,p=1$MTIzNDU2Nzg$tEmA9TbF8lFDbMySWVfYoEqW2ywo6Qr8vu/sHHwVyDs';
+
+--
+-- Check uneven base64 salt (needs padding) and is handled according to pg_pwhash.always_pad_base64
+--
+-- h = scrypt.using(salt=bytes("123456789", "utf-8")).hash("password")
+--
+SELECT pwhash_scrypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84';
+
+--
+-- Check with crypt identifier
+--
+-- Should fail, since scrypt ident is expected
+SELECT pwhash_scrypt('password', '$7$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84';
+
+-- Same, but this time with correct identifier
+SELECT pwhash_scrypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg5$owI4pAfxQFH5mayb2BJed7ltHms8Z+M1JEQ/PIvuW84';
+
+-- Same test, but this time with pg_pwhash.always_pad_base64 set to on (salt and password hash
+-- should be padded)
+SET pg_pwhash.always_pad_base64 TO on;
+SELECT pwhash_scrypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=') = '$scrypt$ln=16,r=8,p=1$MTIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=';
+
+SET pg_pwhash.always_pad_base64 TO off;
+
+-- should fail, options string not present
+SELECT pwhash_scrypt('password', '$scrypt$MTIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00');
+
+-- should fail, obscure option specification
+SELECT pwhash_scrypt('password', '$scrypt$M$TIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=');
+
+--
+-- Test crypt() implementation
+--
+
+-- Should succeed
+SELECT pwhash_scrypt_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/') = '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/';
+
+-- Should fail, obscure salt
+SELECT pwhash_scrypt_crypt('password', '$7$abcdefghijkl');
+
+-- ----------------------------------------------------
+-- Test crypt() compatible interface pwhash_crypt()
+-- ----------------------------------------------------
+
+--
+-- scrypt via libscrypt
+--
+SELECT pwhash_crypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo' AS hash;
+

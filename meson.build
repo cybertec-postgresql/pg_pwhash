@@ -205,7 +205,13 @@ endif
 
 # #################################################################################################
 
-regress_tests = [ 'pg_pwhash' ]
+regress_tests = [
+    'pg_pwhash',
+    'argon2',
+    'argon2_openssl',
+    'scrypt',
+    'yescrypt',
+    ]
 
 test('regress',
      pg_regress,

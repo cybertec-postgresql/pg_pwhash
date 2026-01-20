@@ -1,0 +1,41 @@
+-- -------------------------------------------------------------------------------------------------
+-- Checks for yescrypt hashing
+--
+-- Currently this is supported on platforms with advanced libxcrypt support only (Linux, BSD).
+-- So checks might fail in case support wasn't available during compilation of the extension
+-- -------------------------------------------------------------------------------------------------
+
+--
+-- Compare hashes derived via test/crypt_gensalt_yescrypt password '$y$jAT$ymqO.hmB133abiOGZqA4f/'
+-- (parameter rounds=6)
+--
+SELECT pwhash_yescrypt_crypt('password', '$y$jAT$ymqO.hmB133abiOGZqA4f/') = '$y$jAT$ymqO.hmB133abiOGZqA4f/$ff0GrluBLpVssGRjSIYMUG2E7JWH722mSyalZT3o3E3';
+
+-- Following tests should fail
+-- Note: We need lc_messages set to C, otherwise we get localized errors from libxcrypt
+SET lc_messages TO 'C';
+SELECT pwhash_yescrypt_crypt('password', '$y$');
+SELECT pwhash_yescrypt_crypt('password', '$y$$');
+SELECT pwhash_yescrypt_crypt('password', '');
+RESET lc_messages;
+
+----------------------------------------------------------
+-- Test generating yescrypt hashes with pwhash_gen_salt()
+----------------------------------------------------------
+
+CREATE TABLE pwhash_test_yescrypt(pw text NOT NULL, salt text NOT NULL, hash text);
+INSERT INTO pwhash_test_yescrypt(pw, salt) VALUES('password', pwhash_gen_salt('yescrypt', 'rounds=3'));
+UPDATE pwhash_test_yescrypt SET hash = pwhash_yescrypt_crypt('password', salt) WHERE pw = 'password';
+
+SELECT hash = pwhash_yescrypt_crypt(pw, salt) FROM pwhash_test_yescrypt;
+
+DROP TABLE pwhash_test_yescrypt;
+
+-- ----------------------------------------------------
+-- Test crypt() compatible interface pwhash_crypt()
+-- ----------------------------------------------------
+
+--
+-- yescrypt via crypt()
+--
+SELECT pwhash_crypt('password', '$y$jAT$ymqO.hmB133abiOGZqA4f/') = '$y$jAT$ymqO.hmB133abiOGZqA4f/$ff0GrluBLpVssGRjSIYMUG2E7JWH722mSyalZT3o3E3' AS hash;

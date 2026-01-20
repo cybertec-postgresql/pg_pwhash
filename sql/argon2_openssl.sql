@@ -1,0 +1,15 @@
+--
+-- Argon2id with OpenSSL
+--
+SELECT pwhash_crypt('password', '$argon2id$v=19$m=65536,t=3,p=4,backend=openssl$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4') = '$argon2id$v=19$m=65536,t=3,p=4,backend=openssl$u9ca4zxn7H0PISSE0HqP8Q$yeN3V5sfotE6xjbD+1oBNXyF6ZkgDAlsrnJvYbOgbY4' AS hash;
+
+--
+-- Argon2d with OpenSSL
+--
+SELECT pwhash_crypt('password', '$argon2d$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU') = '$argon2d$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$h+HoUsia1leIw6QQtzEFgergF3Ccud96oLEaS0ZOnMU' AS hash;
+
+--
+-- Argon2i with OpenSSL
+--
+SELECT pwhash_crypt('password', '$argon2i$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A') = '$argon2i$v=19$m=65536,t=3,p=4,backend=openssl$MTIzNDU2Nzg$BvKUwNCmr7GPzmR+EyZJdBTOWvRPvaz2lNpZgWdAN3A' AS hash;
+
