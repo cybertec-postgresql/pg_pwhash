@@ -1,0 +1,68 @@
+name: Tests
+
+on:
+  push:
+    # This should disable running the workflow on tags, according to the
+    # on.<push|pull_request>.<branches|tags> GitHub Actions docs.
+    branches:
+      - "*"
+  pull_request:
+
+concurrency:
+  # Cancel older requests of the same workflow in the same branch.
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie # OpenSSL >= 3.2
+
+    defaults:
+      run:
+        shell: sh
+
+    strategy:
+      #fail-fast: false
+      matrix:
+        pgversion:
+          - 19
+          - 18
+          - 17
+          - 16
+          - 15
+          - 14
+          - 13
+
+    env:
+      PGVERSION: ${{ matrix.pgversion }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Install PostgreSQL
+      run: |
+        apt-get update
+        apt-get install -y build-essential libargon2-dev libscrypt-dev libssl-dev zlib1g-dev postgresql-common
+        echo y | /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh
+        apt-get upgrade -y
+        /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -v $PGVERSION -p -i
+        pg_ctlcluster $PGVERSION main start
+        echo "My name is $(id -un)"
+        su -c "createuser -s $(id -un)" postgres
+
+    - name: Build
+      run: |
+        make PROFILE="-Werror -D_PWHASH_LIBSCRYPT_SUPPORT=1 -D_PWHASH_ARGON2_OSSL_SUPPORT=1 -D_PWHASH_CRYPT_SCRYPT_SUPPORT=1 -D_PWHASH_CRYPT_YESCRYPT_SUPPORT=1"
+        make install
+
+    - name: Test
+      run: |
+        make installcheck
+
+    - name: Show regression diffs
+      if: ${{ failure() }}
+      run: |
+        cat regression.diffs
