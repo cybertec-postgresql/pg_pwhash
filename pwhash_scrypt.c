@@ -20,8 +20,6 @@
 #include "libscrypt.h"
 #endif
 
-PG_MODULE_MAGIC;
-
 #define SCRYPT_WORK_FACTOR_N 16
 #define SCRYPT_BLOCK_SIZE_r 8
 #define SCRYPT_PARALLEL_FACTOR_p 1

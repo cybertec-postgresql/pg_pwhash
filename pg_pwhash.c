@@ -11,10 +11,12 @@
 #include "pwhash_argon2.h"
 #include "pwhash_yescrypt.h"
 
+PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pwhash_test_options);
 PG_FUNCTION_INFO_V1(xgen_salt);
 PG_FUNCTION_INFO_V1(pgxcrypt_crypt);
 PG_FUNCTION_INFO_V1(xcrypt);
+void PGDLLEXPORT _PG_init(void);
 
 #if PG_VERSION_NUM < 180000
 #define PWHASH_PGB64_t char *
