@@ -237,10 +237,10 @@ static StringInfo xgen_gen_salt_string(int rounds,
 	switch(backend)
 	{
 		case SCRYPT_BACKEND_LIBSCRYPT:
-			/* fall through */
 #ifndef _PWHASH_LIBSCRYPT_SUPPORT
 			elog(ERROR, "this version of pg_pwhash was compiled without libscrypt support");
 #endif
+			/* fall through */
 		case SCRYPT_BACKEND_OPENSSL: {
 			if (include_backend_option)
 			{
