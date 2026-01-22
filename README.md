@@ -64,17 +64,19 @@ functionality may be missing then (see table below).
 The following table illustrates tested and supported combinations of Linux and `pg_pwhash` and supported
 libraries/APIs.
 
-|                | libargon2 | OpenSSL(Argon2) | libscrypt | OpenSSL(scrypt) | libcrypt(yescrypt) | libcrypt(scrypt) |
-|----------------|-----------|-----------------|-----------|-----------------|--------------------|------------------|
-| Debian 13      | X         | X               | X         | X               | X                  | X                |
-| Debian 12      | X         |                 | X         | X               | X                  | X                |
-| Debian 11      | X         |                 | X         | X               | X                  | X                |
-| Rocky Linux 8  | X         |                 | X         | X               |                    |                  |
-| Rocky Linux 9  | X         | X               | X         | X               | X                  | X                |
-| Rocky Linux 10 | X         | X               |           | X               | X                  | X                |
+|           Hash | Argon2    | Argon2  | scrypt    | scrypt   | scrypt   | yescrypt |
+|            Tag | $argon2   | $argon2 | $scrypt$  | $scrypt$ | $7$      | $y$      |
+|        Library | libargon2 | OpenSSL | libscrypt | OpenSSL  | libcrypt | libcrypt |
+|----------------|-----------|---------|-----------|----------|----------|----------|
+| Debian 13      | X         | X       | X         | X        | X        | X        |
+| Debian 12      | X         |         | X         | X        | X        | X        |
+| Debian 11      | X         |         | X         | X        | X        | X        |
+| Rocky Linux 10 | X         | X       |           | X        | X        | X        |
+| Rocky Linux 9  | X         | X       | X         | X        | X        | X        |
+| Rocky Linux 8  | X         |         | X         | X        |          |          |
 
 Like Python's `passlib`, you can select different backends to use for hashing your password, depending
-on the choosen hash algorithm. See below for details.
+on the chosen hash algorithm. See below for details.
 
 # Installing
 
@@ -114,7 +116,7 @@ To finally build the `pg_pwhash` extension use the following command as an examp
 features via the compiler macros explained above (make sure the `pg_config` tool can be found):
 
 ```shell
-make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
+make PROFILE="-D_PWHASH_ARGON2_OSSL_SUPPORT=1 -D_PWHASH_CRYPT_SCRYPT_SUPPORT=1 -D_PWHASH_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
 ```
 
 If you want to built against a specific PostgreSQL version (like on Debian), you can specify the
@@ -122,7 +124,7 @@ If you want to built against a specific PostgreSQL version (like on Debian), you
 
 ```shell
 PG_CONFIG=/usr/lib/postgresql/17/bin/pg_config \
-  make PROFILE="-D_PGXCRYPTO_ARGON2_OSSL_SUPPORT=1 -D_PGXCRYPTO_CRYPT_SCRYPT_SUPPORT=1 -D_PGXCRYPTO_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
+  make PROFILE="-D_PWHASH_ARGON2_OSSL_SUPPORT=1 -D_PWHASH_CRYPT_SCRYPT_SUPPORT=1 -D_PWHASH_CRYPT_YESCRYPT_SUPPORT=1 -D_PWHASH_LIBSCRYPT_SUPPORT=1"
 ```
 
 # Motivation
@@ -153,7 +155,7 @@ Currently `pg_pwhash` requires at least PostgreSQL 13 (this is the minimum teste
 Using `pg_pwhash` to generate password hashes follows the same pattern than `crypt()`: you generate a
 complete randomized salt for the requested hash algorithm and pass this to the `pwhash_crypt()` function.
 The `pwhash_crypt()` needs a salt string, that identifies the hashing algorithm to be used to hash
-the given password. To ease the usage, users are adviced to use the `pwhash_gen_salt()` function, which
+the given password. To ease the usage, users are advised to use the `pwhash_gen_salt()` function, which
 takes the algorithm name to use to generate a fully randomized salt string. The following examples
 demonstrates this for each of the supported hash algorithms.
 
@@ -381,7 +383,7 @@ SELECT pwhash_crypt('password', pwhash_gen_salt('scrypt', 'backend=openssl', 'ro
 ERROR:  cannot derive test vector
 
 SELECT pwhash_crypt('password', pwhash_gen_salt('scrypt', 'backend=libscrypt', 'rounds=22'));
-pwhash_crypt                                       
+                                       pwhash_crypt                                       
 ──────────────────────────────────────────────────────────────────────────────────────────
  $scrypt$ln=22,r=8,p=1$H72V4Yu4oNcJ+j8bipbNcg$nfNxmJx9mH+d431ChtWDEZ5AG3pBwj9yESGE+YKJGYs
 (1 row)
@@ -391,7 +393,7 @@ Time: 9402,637 ms (00:09,403)
 
 - `parallelism/p`: The number of parallel calculations. Default is `1`. The allowed values are `1` to
   `1024`.
-- `backend`: This is an extension to the list of supported parameters propietary to `pgxcrypto_pwhash()`. This allows to
+- `backend`: This is an extension to the list of supported parameters proprietary to `pgxcrypto_pwhash()`. This allows to
   switch from the default backend `libscrypt` to `openssl`.
 
 The generated hashes should be compatible with python's `passlib` and OpenSSL.
@@ -511,7 +513,7 @@ SELECT pwhash_scrypt_crypt('password', pwhash_gen_salt('$7$', 'rounds=11'));
 The function `pwhash_argon2()` calls the `argon2` hashing backends `OpenSSL`/`libargon2` directly.
 
 The following example creates a password hash with `argon2d` algorithm and increases compute time with
-the `rounds=12` parameter. Additionally we are explicitely switching to `OpenSSL` backend via the
+the `rounds=12` parameter. Additionally we are explicitly switching to `OpenSSL` backend via the
 `backend` parameter:
 
 ```postgresql
