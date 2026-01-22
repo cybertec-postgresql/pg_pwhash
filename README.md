@@ -64,16 +64,16 @@ functionality may be missing then (see table below).
 The following table illustrates tested and supported combinations of Linux and `pg_pwhash` and supported
 libraries/APIs.
 
-|           Hash | Argon2    | Argon2  | scrypt    | scrypt   | scrypt   | yescrypt |
-|            Tag | $argon2   | $argon2 | $scrypt$  | $scrypt$ | $7$      | $y$      |
-|        Library | libargon2 | OpenSSL | libscrypt | OpenSSL  | libcrypt | libcrypt |
-|----------------|-----------|---------|-----------|----------|----------|----------|
-| Debian 13      | X         | X       | X         | X        | X        | X        |
-| Debian 12      | X         |         | X         | X        | X        | X        |
-| Debian 11      | X         |         | X         | X        | X        | X        |
-| Rocky Linux 10 | X         | X       |           | X        | X        | X        |
-| Rocky Linux 9  | X         | X       | X         | X        | X        | X        |
-| Rocky Linux 8  | X         |         | X         | X        |          |          |
+|           Hash | Argon2    | Argon2    | scrypt     | scrypt     | scrypt   | yescrypt |
+|----------------|-----------|-----------|------------|------------|----------|----------|
+|            Tag | `$argon2` | `$argon2` | `$scrypt$` | `$scrypt$` | `$7$`    | `$y$`    |
+|        Library | libargon2 | OpenSSL   | libscrypt  | OpenSSL    | libcrypt | libcrypt |
+| Debian 13      | X         | X         | X          | X          | X        | X        |
+| Debian 12      | X         |           | X          | X          | X        | X        |
+| Debian 11      | X         |           | X          | X          | X        | X        |
+| Rocky Linux 10 | X         | X         |            | X          | X        | X        |
+| Rocky Linux 9  | X         | X         | X          | X          | X        | X        |
+| Rocky Linux 8  | X         |           | X          | X          |          |          |
 
 Like Python's `passlib`, you can select different backends to use for hashing your password, depending
 on the chosen hash algorithm. See below for details.
