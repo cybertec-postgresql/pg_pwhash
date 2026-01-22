@@ -23,11 +23,6 @@ SHOW pg_pwhash.argon2_default_backend;
 -- ----------------------------------------------------
 
 --
--- scrypt via crypt()
---
-SELECT pwhash_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$') = '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/' AS hash;
-
---
 -- scrypt via OpenSSL
 --
 SELECT pwhash_crypt('password', '$scrypt$ln=16,r=8,p=1,backend=openssl$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo' AS hash;

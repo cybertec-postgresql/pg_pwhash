@@ -42,16 +42,3 @@ ERROR:  invalid option name: "MTIzNDU"
 -- should fail, obscure option specification
 SELECT pwhash_scrypt('password', '$scrypt$M$TIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=');
 ERROR:  bogus option specified in salt
---
--- Test crypt() implementation
---
--- Should succeed
-SELECT pwhash_scrypt_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/') = '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/';
- ?column? 
-----------
- t
-(1 row)
-
--- Should fail, obscure salt
-SELECT pwhash_scrypt_crypt('password', '$7$abcdefghijkl');
-ERROR:  this platform does not provide crypt support for scrypt

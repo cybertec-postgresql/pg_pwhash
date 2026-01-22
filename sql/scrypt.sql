@@ -42,23 +42,3 @@ SELECT pwhash_scrypt('password', '$scrypt$MTIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0ml
 
 -- should fail, obscure option specification
 SELECT pwhash_scrypt('password', '$scrypt$M$TIzNDU=$UrgkUooL3HseyjbLegKgNKz2B/0mlHRg+ZJu6DuXK00=');
-
---
--- Test crypt() implementation
---
-
--- Should succeed
-SELECT pwhash_scrypt_crypt('password', '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/') = '$7$DU..../....OhzHZvHVazzr5gCG7jotQ0$aehDO6CrqD4ITgsiLqw3EmIYyulY/tZSF9ARYtZN4U/';
-
--- Should fail, obscure salt
-SELECT pwhash_scrypt_crypt('password', '$7$abcdefghijkl');
-
--- ----------------------------------------------------
--- Test crypt() compatible interface pwhash_crypt()
--- ----------------------------------------------------
-
---
--- scrypt via libscrypt
---
-SELECT pwhash_crypt('password', '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo') = '$scrypt$ln=16,r=8,p=1$MTIzNDU2Nzg$NuB+vs2zc0fb2UzIRwwAV6ZWb3St8+X9IedYI1gQsoo' AS hash;
-

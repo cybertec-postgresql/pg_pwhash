@@ -210,6 +210,8 @@ regress_tests = [
     'argon2',
     'argon2_openssl',
     'scrypt',
+    'scrypt_crypt',
+    'scrypt_libscrypt',
     'yescrypt',
     ]
 

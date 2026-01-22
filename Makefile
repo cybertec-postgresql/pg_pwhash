@@ -7,7 +7,7 @@ EXTENSION = pg_pwhash
 DATA = pg_pwhash--1.0.sql
 DOCS = README.md
 
-REGRESS = pg_pwhash argon2 argon2_openssl scrypt yescrypt
+REGRESS = pg_pwhash argon2 argon2_openssl scrypt scrypt_crypt scrypt_libscrypt yescrypt
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
